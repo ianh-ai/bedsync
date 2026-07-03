@@ -116,8 +116,15 @@ async function scrapeHelix(url: string): Promise<ScrapedVariant[]> {
   let res: Response
   if (process.env.SCRAPER_API_KEY) {
     const proxyUrl = `http://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&url=${encodeURIComponent(url)}&render=false`
-    console.log(`[scrape:helix] Using ScraperAPI proxy`)
+    console.log(`[scrape:helix] ScraperAPI target URL: ${url}`)
+    console.log(`[scrape:helix] ScraperAPI proxy URL (key redacted): http://api.scraperapi.com?api_key=REDACTED&url=${encodeURIComponent(url)}&render=false`)
     res = await fetch(proxyUrl)
+    const bodyText = await res.text()
+    console.log(`[scrape:helix] ScraperAPI status: ${res.status}`)
+    console.log(`[scrape:helix] ScraperAPI body (first 500 chars): ${bodyText.slice(0, 500)}`)
+    if (!res.ok) throw new Error(`ScraperAPI fetch failed: ${res.status}`)
+    // Re-wrap the already-consumed body so the rest of the function can call res.text() / res.ok normally
+    res = new Response(bodyText, { status: res.status, headers: res.headers })
   } else {
     console.warn(`[scrape:helix] SCRAPER_API_KEY not set, falling back to direct fetch (may 403 on Vercel)`)
     res = await fetch(url, {
