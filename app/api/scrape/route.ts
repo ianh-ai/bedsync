@@ -112,31 +112,14 @@ async function scrapeHelix(url: string, attempt = 1): Promise<ScrapedVariant[]> 
 
   // HTML fetch needed for Approaches 1 and 3.
   // Use ScraperAPI to avoid 403s from Cloudflare on Vercel's IP ranges.
-  const HELIX_URL_ALIASES: Record<string, string> = {
-    'midnight-luxe': 'twilight-luxe',
-    'helix-midnight-luxe': 'helix-twilight-luxe',
-  }
-
-  let targetUrl = url
-  console.log(`[scrape:helix] raw targetUrl: ${targetUrl}`)
-  const slugMatch = targetUrl.match(/helixsleep\.com\/products\/([^/?]+)/)
-  if (slugMatch) {
-    const slug = slugMatch[1]
-    if (HELIX_URL_ALIASES[slug]) {
-      console.log(`[scrape:helix] aliasing ${slug} → ${HELIX_URL_ALIASES[slug]}`)
-      targetUrl = targetUrl.replace(slug, HELIX_URL_ALIASES[slug])
-    }
-  }
-  const effectiveUrl = targetUrl
-  console.log(`[scrape:helix] effectiveUrl after alias check: ${effectiveUrl}`)
-
-  console.log(`[scrape:helix] Fetching HTML: ${effectiveUrl}`)
+  const targetUrl = url
+  console.log(`[scrape:helix] Fetching HTML: ${targetUrl}`)
   let res: Response
   if (process.env.SCRAPER_API_KEY) {
     const render = attempt > 1 ? 'true' : 'false'
-    const proxyUrl = `http://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&url=${encodeURIComponent(effectiveUrl)}&render=${render}`
-    console.log(`[scrape:helix] ScraperAPI target URL: ${effectiveUrl}`)
-    console.log(`[scrape:helix] ScraperAPI proxy URL (key redacted): http://api.scraperapi.com?api_key=REDACTED&url=${encodeURIComponent(effectiveUrl)}&render=${render}`)
+    const proxyUrl = `http://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&url=${encodeURIComponent(targetUrl)}&render=${render}`
+    console.log(`[scrape:helix] ScraperAPI target URL: ${targetUrl}`)
+    console.log(`[scrape:helix] ScraperAPI proxy URL (key redacted): http://api.scraperapi.com?api_key=REDACTED&url=${encodeURIComponent(targetUrl)}&render=${render}`)
     res = await fetch(proxyUrl)
     const bodyText = await res.text()
     console.log(`[scrape:helix] ScraperAPI status: ${res.status}`)
@@ -146,7 +129,7 @@ async function scrapeHelix(url: string, attempt = 1): Promise<ScrapedVariant[]> 
     res = new Response(bodyText, { status: res.status, headers: res.headers })
   } else {
     console.warn(`[scrape:helix] SCRAPER_API_KEY not set, falling back to direct fetch (may 403 on Vercel)`)
-    res = await fetch(effectiveUrl, {
+    res = await fetch(targetUrl, {
       headers: {
         ...BROWSER_HEADERS,
         'Referer': 'https://www.google.com/',
