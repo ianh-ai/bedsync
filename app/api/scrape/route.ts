@@ -1638,12 +1638,13 @@ async function scrapeWinkBeds(url: string, variantFilter?: string | null): Promi
 }
 
 async function scrapeForBrand(brand: string, url: string, variantFilter?: string | null, attempt = 1): Promise<ScrapedVariant[]> {
-  if (brand === 'helix') return scrapeHelix(url, attempt)
-  if (brand === 'birch') return scrapeHelix(url, attempt)
-  if (brand === 'nectar') return scrapeNectar(url, variantFilter)
-  if (brand === 'dreamcloud') return scrapeNectar(url, variantFilter, 'dreamcloud')
-  if (brand === 'puffy') return scrapePuffy(url, variantFilter)
-  if (brand === 'winkbeds') return scrapeWinkBeds(url, variantFilter)
+  const normalizedBrand = brand.toLowerCase()
+  if (normalizedBrand === 'helix') return scrapeHelix(url, attempt)
+  if (normalizedBrand === 'birch') return scrapeHelix(url, attempt)
+  if (normalizedBrand === 'nectar') return scrapeNectar(url, variantFilter)
+  if (normalizedBrand === 'dreamcloud') return scrapeNectar(url, variantFilter, 'dreamcloud')
+  if (normalizedBrand === 'puffy') return scrapePuffy(url, variantFilter)
+  if (normalizedBrand === 'winkbeds') return scrapeWinkBeds(url, variantFilter)
   return scrapeGeneric(url, variantFilter)
 }
 
