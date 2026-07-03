@@ -56,7 +56,7 @@ function tryParseVariants(json: unknown): ScrapedVariant[] | null {
   return results.length > 0 ? results : null
 }
 
-async function scrapeHelix(url: string): Promise<ScrapedVariant[]> {
+async function scrapeHelix(url: string, attempt = 1): Promise<ScrapedVariant[]> {
   // --- Approach 0: Shopify product.json endpoint ---
   const helixOrigin = new URL(url).origin
   const handleMatch = url.match(/\/products\/([^/?#]+)/)
@@ -115,9 +115,10 @@ async function scrapeHelix(url: string): Promise<ScrapedVariant[]> {
   console.log(`[scrape:helix] Fetching HTML: ${url}`)
   let res: Response
   if (process.env.SCRAPER_API_KEY) {
-    const proxyUrl = `http://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&url=${encodeURIComponent(url)}&render=false`
+    const render = attempt > 1 ? 'true' : 'false'
+    const proxyUrl = `http://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&url=${encodeURIComponent(url)}&render=${render}`
     console.log(`[scrape:helix] ScraperAPI target URL: ${url}`)
-    console.log(`[scrape:helix] ScraperAPI proxy URL (key redacted): http://api.scraperapi.com?api_key=REDACTED&url=${encodeURIComponent(url)}&render=false`)
+    console.log(`[scrape:helix] ScraperAPI proxy URL (key redacted): http://api.scraperapi.com?api_key=REDACTED&url=${encodeURIComponent(url)}&render=${render}`)
     res = await fetch(proxyUrl)
     const bodyText = await res.text()
     console.log(`[scrape:helix] ScraperAPI status: ${res.status}`)
@@ -1618,9 +1619,9 @@ async function scrapeWinkBeds(url: string, variantFilter?: string | null): Promi
   return scrapeGeneric(resolvedUrl, variantFilter)
 }
 
-async function scrapeForBrand(brand: string, url: string, variantFilter?: string | null): Promise<ScrapedVariant[]> {
-  if (brand === 'helix') return scrapeHelix(url)
-  if (brand === 'birch') return scrapeHelix(url)
+async function scrapeForBrand(brand: string, url: string, variantFilter?: string | null, attempt = 1): Promise<ScrapedVariant[]> {
+  if (brand === 'helix') return scrapeHelix(url, attempt)
+  if (brand === 'birch') return scrapeHelix(url, attempt)
   if (brand === 'nectar') return scrapeNectar(url, variantFilter)
   if (brand === 'dreamcloud') return scrapeNectar(url, variantFilter, 'dreamcloud')
   if (brand === 'puffy') return scrapePuffy(url, variantFilter)
@@ -1662,7 +1663,7 @@ export async function runScrape(tracked_product_id: string, supabase: SupabaseCl
     let lastScrapeError: string | null = null
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
-        scraped = await scrapeForBrand(brand, product.manufacturer_url, variantFilter)
+        scraped = await scrapeForBrand(brand, product.manufacturer_url, variantFilter, attempt)
         break
       } catch (err) {
         lastScrapeError = err instanceof Error ? err.message : String(err)
