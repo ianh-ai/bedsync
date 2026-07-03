@@ -1,65 +1,111 @@
-import Image from "next/image";
+import Link from 'next/link'
 
-export default function Home() {
+export default function HomePage() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
+    <div className="min-h-screen bg-white">
+      <header className="border-b border-gray-100">
+        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
+          <span className="text-lg font-bold text-gray-900">BedSync</span>
+          <div className="flex items-center gap-4">
+            <Link href="/login" className="text-sm text-gray-600 hover:text-gray-900">
+              Sign in
+            </Link>
+            <Link
+              href="/signup"
+              className="text-sm bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
+            >
+              Get Started
+            </Link>
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-5xl mx-auto px-6">
+        <section className="py-24 text-center">
+          <div className="inline-flex items-center gap-2 bg-blue-50 text-blue-700 text-xs font-medium px-3 py-1.5 rounded-full mb-6">
+            Automated mattress price syncing
+          </div>
+          <h1 className="text-5xl font-bold text-gray-900 tracking-tight mb-6">
+            Keep your prices in sync,{' '}
+            <span className="text-blue-600">automatically</span>
           </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+          <p className="text-xl text-gray-500 max-w-2xl mx-auto mb-10">
+            Connect your Shopify store, link your products to manufacturer pages, and BedSync
+            scrapes current prices daily — keeping you competitive without the manual work.
           </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+          <div className="flex items-center justify-center gap-4">
+            <Link
+              href="/signup"
+              className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-3 rounded-lg transition-colors"
+            >
+              Get Started Free
+            </Link>
+            <Link
+              href="/login"
+              className="text-gray-600 hover:text-gray-900 font-medium px-6 py-3 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors"
+            >
+              Sign in
+            </Link>
+          </div>
+        </section>
+
+        <section className="py-16 border-t border-gray-100">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div className="p-6">
+              <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
+                <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                </svg>
+              </div>
+              <h3 className="font-semibold text-gray-900 mb-2">Connect your store</h3>
+              <p className="text-sm text-gray-500">
+                Link your Shopify store in seconds. BedSync handles the rest using your existing product catalog.
+              </p>
+            </div>
+
+            <div className="p-6">
+              <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
+                <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                </svg>
+              </div>
+              <h3 className="font-semibold text-gray-900 mb-2">Track manufacturer prices</h3>
+              <p className="text-sm text-gray-500">
+                Map your products to manufacturer URLs across Helix, Casper, Purple, and 10+ more brands.
+              </p>
+            </div>
+
+            <div className="p-6">
+              <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
+                <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              </div>
+              <h3 className="font-semibold text-gray-900 mb-2">Auto-sync daily</h3>
+              <p className="text-sm text-gray-500">
+                Prices update automatically every day. Match sale price, regular price, or add a custom markup.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section className="py-16 border-t border-gray-100">
+          <h2 className="text-2xl font-bold text-gray-900 mb-8 text-center">Supported brands</h2>
+          <div className="flex flex-wrap justify-center gap-3">
+            {['Helix Sleep', 'Dreamcloud', 'Bear', 'Casper', 'Nectar', 'Puffy', 'Brooklyn Bedding', 'Birch', 'Avocado', 'Mlily', 'Naturepedic', 'WinkBeds'].map(brand => (
+              <span key={brand} className="px-4 py-2 bg-gray-50 border border-gray-200 rounded-full text-sm text-gray-700">
+                {brand}
+              </span>
+            ))}
+          </div>
+        </section>
       </main>
+
+      <footer className="border-t border-gray-100 mt-16">
+        <div className="max-w-5xl mx-auto px-6 py-8 text-center text-sm text-gray-400">
+          &copy; {new Date().getFullYear()} BedSync. All rights reserved.
+        </div>
+      </footer>
     </div>
-  );
+  )
 }
