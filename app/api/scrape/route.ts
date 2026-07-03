@@ -113,7 +113,14 @@ async function scrapeHelix(url: string): Promise<ScrapedVariant[]> {
   // HTML fetch needed for Approaches 1 and 3
   console.log(`[scrape:helix] Fetching HTML: ${url}`)
   const res = await fetch(url, {
-    headers: { ...BROWSER_HEADERS, Referer: helixOrigin + '/' },
+    headers: {
+      ...BROWSER_HEADERS,
+      'Referer': 'https://www.google.com/',
+      'Upgrade-Insecure-Requests': '1',
+      'Sec-Fetch-Dest': 'document',
+      'Sec-Fetch-Mode': 'navigate',
+      'Sec-Fetch-Site': 'cross-site',
+    },
   })
   console.log(`[scrape:helix] Status: ${res.status}`)
   if (!res.ok) throw new Error(`HTML fetch failed: ${res.status}`)
