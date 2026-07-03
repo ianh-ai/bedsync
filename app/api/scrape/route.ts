@@ -114,6 +114,7 @@ async function scrapeHelix(url: string, attempt = 1): Promise<ScrapedVariant[]> 
   // Use ScraperAPI to avoid 403s from Cloudflare on Vercel's IP ranges.
   const HELIX_URL_ALIASES: Record<string, string> = {
     'midnight-luxe': 'twilight-luxe',
+    'helix-midnight-luxe': 'helix-twilight-luxe',
   }
 
   let targetUrl = url
