@@ -110,18 +110,27 @@ async function scrapeHelix(url: string): Promise<ScrapedVariant[]> {
     console.log(`[scrape:helix] Approach 0 exhausted — falling through to HTML approaches`)
   }
 
-  // HTML fetch needed for Approaches 1 and 3
+  // HTML fetch needed for Approaches 1 and 3.
+  // Use ScraperAPI to avoid 403s from Cloudflare on Vercel's IP ranges.
   console.log(`[scrape:helix] Fetching HTML: ${url}`)
-  const res = await fetch(url, {
-    headers: {
-      ...BROWSER_HEADERS,
-      'Referer': 'https://www.google.com/',
-      'Upgrade-Insecure-Requests': '1',
-      'Sec-Fetch-Dest': 'document',
-      'Sec-Fetch-Mode': 'navigate',
-      'Sec-Fetch-Site': 'cross-site',
-    },
-  })
+  let res: Response
+  if (process.env.SCRAPER_API_KEY) {
+    const proxyUrl = `http://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&url=${encodeURIComponent(url)}&render=false`
+    console.log(`[scrape:helix] Using ScraperAPI proxy`)
+    res = await fetch(proxyUrl)
+  } else {
+    console.warn(`[scrape:helix] SCRAPER_API_KEY not set, falling back to direct fetch (may 403 on Vercel)`)
+    res = await fetch(url, {
+      headers: {
+        ...BROWSER_HEADERS,
+        'Referer': 'https://www.google.com/',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'cross-site',
+      },
+    })
+  }
   console.log(`[scrape:helix] Status: ${res.status}`)
   if (!res.ok) throw new Error(`HTML fetch failed: ${res.status}`)
   const html = await res.text()
