@@ -32,6 +32,13 @@ export async function GET(request: Request) {
   const dayOfWeek = now.getUTCDay()   // 0=Sunday, 1=Monday
   const dayOfMonth = now.getUTCDate()
 
+  type ProductResult = {
+    name: string
+    status: 'ok' | 'error'
+    step?: 'scrape' | 'sync'
+    error?: string
+    detail?: string
+  }
   type StoreResult = {
     store: string
     skipped?: true
@@ -39,6 +46,7 @@ export async function GET(request: Request) {
     total?: number
     succeeded?: number
     failed?: number
+    products?: ProductResult[]
   }
   const results: StoreResult[] = []
 
@@ -61,12 +69,13 @@ export async function GET(request: Request) {
       .eq('store_id', store.id)
 
     if (!products?.length) {
-      results.push({ store: store.shop_domain, total: 0, succeeded: 0, failed: 0 })
+      results.push({ store: store.shop_domain, total: 0, succeeded: 0, failed: 0, products: [] })
       continue
     }
 
     let succeeded = 0
     let failed = 0
+    const productResults: ProductResult[] = []
 
     for (const product of products) {
       const name = product.label || product.shopify_product_title || product.id
@@ -74,8 +83,13 @@ export async function GET(request: Request) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const scrapeRes = await runScrape(product.id, admin as any)
         if (!scrapeRes.ok) {
-          const body = await scrapeRes.json().catch(() => ({}))
-          throw new Error((body as Record<string, string>).error ?? `scrape HTTP ${scrapeRes.status}`)
+          const body = await scrapeRes.json().catch(() => ({})) as Record<string, string>
+          const msg = body.error ?? `scrape HTTP ${scrapeRes.status}`
+          const detail = body.detail ?? body.brand ?? undefined
+          console.error(`[cron:sync-all] ${store.shop_domain} / "${name}" scrape failed: ${msg}${detail ? ` (${detail})` : ''}`)
+          productResults.push({ name, status: 'error', step: 'scrape', error: msg, detail })
+          failed++
+          continue
         }
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -84,19 +98,27 @@ export async function GET(request: Request) {
           access_token: store.access_token,
         })
         if (!syncRes.ok) {
-          const body = await syncRes.json().catch(() => ({}))
-          throw new Error((body as Record<string, string>).error ?? `sync HTTP ${syncRes.status}`)
+          const body = await syncRes.json().catch(() => ({})) as Record<string, string>
+          const msg = body.error ?? `sync HTTP ${syncRes.status}`
+          const detail = body.detail ?? undefined
+          console.error(`[cron:sync-all] ${store.shop_domain} / "${name}" sync failed: ${msg}${detail ? ` (${detail})` : ''}`)
+          productResults.push({ name, status: 'error', step: 'sync', error: msg, detail })
+          failed++
+          continue
         }
 
         succeeded++
+        productResults.push({ name, status: 'ok' })
         console.log(`[cron:sync-all] ${store.shop_domain} / "${name}": ok`)
       } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        console.error(`[cron:sync-all] ${store.shop_domain} / "${name}" threw: ${msg}`)
+        productResults.push({ name, status: 'error', error: msg })
         failed++
-        console.error(`[cron:sync-all] ${store.shop_domain} / "${name}":`, err instanceof Error ? err.message : err)
       }
     }
 
-    results.push({ store: store.shop_domain, total: products.length, succeeded, failed })
+    results.push({ store: store.shop_domain, total: products.length, succeeded, failed, products: productResults })
     console.log(`[cron:sync-all] ${store.shop_domain}: ${succeeded}/${products.length} succeeded, ${failed} failed`)
   }
 
