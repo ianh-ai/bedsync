@@ -44,9 +44,12 @@ function DemoPlayer() {
         />
       </div>
 
-      <div className="px-8 py-8 min-h-[280px] flex flex-col justify-center">
-        {step === 0 && (
-          <div className="space-y-4 animate-fade-in">
+      {/* Fixed-height stage — all steps rendered simultaneously, faded in/out */}
+      <div className="relative h-[360px] overflow-hidden">
+
+        {/* Step 0 */}
+        <div className={`absolute inset-0 px-8 py-8 flex flex-col justify-center transition-opacity duration-300 ${step === 0 ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+          <div className="space-y-4">
             <p className="text-xs font-semibold text-blue-600 uppercase tracking-widest">Step 1 — Detecting price change</p>
             <div className="border border-gray-200 rounded-xl overflow-hidden">
               <div className="bg-gray-100 px-4 py-2 flex items-center gap-2">
@@ -65,10 +68,11 @@ function DemoPlayer() {
               </div>
             </div>
           </div>
-        )}
+        </div>
 
-        {step === 1 && (
-          <div className="space-y-4 animate-fade-in">
+        {/* Step 1 */}
+        <div className={`absolute inset-0 px-8 py-8 flex flex-col justify-center transition-opacity duration-300 ${step === 1 ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+          <div className="space-y-4">
             <p className="text-xs font-semibold text-blue-600 uppercase tracking-widest">Step 2 — Price change detected</p>
             <div className="border border-orange-200 bg-orange-50 rounded-xl p-5 flex items-start gap-3">
               <span className="relative flex h-3 w-3 mt-0.5 shrink-0">
@@ -84,10 +88,11 @@ function DemoPlayer() {
               </div>
             </div>
           </div>
-        )}
+        </div>
 
-        {step === 2 && (
-          <div className="space-y-4 animate-fade-in">
+        {/* Step 2 */}
+        <div className={`absolute inset-0 px-8 py-8 flex flex-col justify-center transition-opacity duration-300 ${step === 2 ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+          <div className="space-y-4">
             <p className="text-xs font-semibold text-blue-600 uppercase tracking-widest">Step 3 — Updating your dashboard</p>
             <div className="border border-gray-200 rounded-xl overflow-hidden">
               <div className="bg-gray-900 px-4 py-2.5">
@@ -105,10 +110,11 @@ function DemoPlayer() {
               </table>
             </div>
           </div>
-        )}
+        </div>
 
-        {step === 3 && (
-          <div className="space-y-5 animate-fade-in">
+        {/* Step 3 */}
+        <div className={`absolute inset-0 px-8 py-8 flex flex-col justify-center transition-opacity duration-300 ${step === 3 ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+          <div className="space-y-5">
             <p className="text-xs font-semibold text-blue-600 uppercase tracking-widest">Step 4 — Syncing to store</p>
             <div className="flex items-center justify-center gap-10">
               <div className="flex flex-col items-center gap-2">
@@ -131,17 +137,18 @@ function DemoPlayer() {
                 <div className="w-14 h-14 bg-purple-100 rounded-2xl flex items-center justify-center">
                   <svg viewBox="0 0 24 24" className="w-8 h-8" fill="none">
                     <rect width="24" height="24" rx="4" fill="#7f54b3" />
-                    <path d="M3 6.4C3.3 6.1 3.7 6 4.2 6h15.6c.5 0 .9.2 1.1.5.3.3.3.7.2 1.1l-2 9.8c-.1.5-.4.8-.8.8H4.3c-.4 0-.7-.3-.8-.8L2.7 7.5c-.1-.5 0-.8.3-1.1zm3.8 8.9c.4 0 .8-.2 1-.5.2-.2.3-.6.2-1l-.6-3.3h.8L9 13l1-2.9h.8l.3 4.8h-.7l-.2-3.3-1.1 2.5h-.5L7.4 11.6l-.2 3.3H6.8l-.5.4h.5zm7.5 0c-.5 0-.9-.2-1.2-.6-.3-.4-.4-.9-.4-1.4 0-.6.1-1 .4-1.4.3-.4.6-.6 1.1-.6s.8.2 1.1.6c.3.4.4.8.4 1.4 0 .5-.1 1-.4 1.4-.3.4-.6.6-1 .6zm0-.6c.2 0 .4-.1.6-.4.1-.2.2-.6.2-.9 0-.4-.1-.7-.2-1-.2-.2-.4-.3-.6-.3s-.4.1-.6.3c-.1.2-.2.6-.2.9 0 .4.1.7.2.9.2.3.4.5.6.5z" fill="white" />
+                    <path d="M3 6.4C3.3 6.1 3.7 6 4.2 6h15.6c.5 0 .9.2 1.1.5.3.3.3.7.2 1.1l-2 9.8c-.1.5-.4.8-.8.8H4.3c-.4 0-.7-.3-.8-.8L2.7 7.5c-.1-.5 0-.8.3-1.1zm3.8 8.9c.4 0 .8-.2 1-.5.2-.2.3-.6.2-1l-.6-3.3h.8L9 13l1-2.9h.8l.3 4.8h-.7l-.2-3.3-1.1 2.5h-.5L7.4 11.6l-.2 3.3H6.8zm7.5 0c-.5 0-.9-.2-1.2-.6-.3-.4-.4-.9-.4-1.4 0-.6.1-1 .4-1.4.3-.4.6-.6 1.1-.6s.8.2 1.1.6c.3.4.4.8.4 1.4 0 .5-.1 1-.4 1.4-.3.4-.6.6-1 .6zm0-.6c.2 0 .4-.1.6-.4.1-.2.2-.6.2-.9 0-.4-.1-.7-.2-1-.2-.2-.4-.3-.6-.3s-.4.1-.6.3c-.1.2-.2.6-.2.9 0 .4.1.7.2.9.2.3.4.5.6.5z" fill="white" />
                   </svg>
                 </div>
                 <span className="text-xs font-medium text-gray-600">WooCommerce</span>
               </div>
             </div>
           </div>
-        )}
+        </div>
 
-        {step === 4 && (
-          <div className="space-y-4 animate-fade-in">
+        {/* Step 4 */}
+        <div className={`absolute inset-0 px-8 py-8 flex flex-col justify-center transition-opacity duration-300 ${step === 4 ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+          <div className="space-y-4">
             <p className="text-xs font-semibold text-blue-600 uppercase tracking-widest">Step 5 — Done ✓</p>
             <div className="border border-green-200 bg-green-50 rounded-xl px-5 py-3">
               <p className="text-sm font-semibold text-green-800">✓ Sync complete · 6 variants updated · 0 errors</p>
@@ -165,7 +172,8 @@ function DemoPlayer() {
               </tbody>
             </table>
           </div>
-        )}
+        </div>
+
       </div>
 
       {/* Step dots */}
