@@ -5,12 +5,8 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { CATALOG, type CatalogEntry } from '@/lib/catalog'
 
-function normalizeFilter(v: string | null | undefined): string {
-  return (v ?? '').trim().toLowerCase()
-}
-
-function trackKey(url: string, variantFilter: string | null | undefined): string {
-  return `${url.replace(/\/$/, '').toLowerCase()}::${normalizeFilter(variantFilter)}`
+function trackKey(brand: string, name: string): string {
+  return `${brand.toLowerCase()}::${name.toLowerCase()}`
 }
 
 export default function AddProductPage() {
@@ -40,12 +36,12 @@ export default function AddProductPage() {
       if (store?.id) {
         const { data: products } = await supabase
           .from('tracked_products')
-          .select('manufacturer_url, variant_filter')
+          .select('brand, label')
           .eq('store_id', store.id)
 
         const keys = new Set<string>()
         for (const p of products ?? []) {
-          keys.add(trackKey(p.manufacturer_url ?? '', p.variant_filter))
+          keys.add(trackKey(p.brand ?? '', p.label ?? ''))
         }
         setTrackedKeys(keys)
       }
@@ -56,7 +52,7 @@ export default function AddProductPage() {
   }, [])
 
   function isTracked(entry: CatalogEntry): boolean {
-    return trackedKeys.has(trackKey(entry.url, entry.variantFilter)) || addedLocally.has(entry.id)
+    return trackedKeys.has(trackKey(entry.brand, entry.name)) || addedLocally.has(entry.id)
   }
 
   function toggleChecked(id: string) {

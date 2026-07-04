@@ -1679,8 +1679,8 @@ const TEMPURPEDIC_SIZE_MAP: Record<string, string> = {
 }
 const TEMPURPEDIC_SIZE_SKIP = new Set(['Split King', 'Split CA King', 'RV King'])
 
-async function scrapeTempurpedic(url: string): Promise<ScrapedVariant[]> {
-  console.log(`[scrape:tempurpedic] url="${url}"`)
+async function scrapeTempurpedic(url: string, productName?: string): Promise<ScrapedVariant[]> {
+  console.log(`[scrape:tempurpedic] url="${url}" productName="${productName ?? ''}"`)
   const res = await fetch(url, { headers: BROWSER_HEADERS })
   console.log(`[scrape:tempurpedic] HTML status: ${res.status}`)
   if (!res.ok) throw new Error(`HTML fetch failed: ${res.status}`)
@@ -1691,26 +1691,44 @@ async function scrapeTempurpedic(url: string): Promise<ScrapedVariant[]> {
   console.log(`[scrape:tempurpedic] Found ${ldJsonScripts.length} JSON-LD script(s)`)
 
   // Collect all Product entries from all JSON-LD blocks
-  const products: Array<Record<string, unknown>> = []
+  const allProducts: Array<Record<string, unknown>> = []
   for (const el of ldJsonScripts) {
     let parsed: unknown
     try { parsed = JSON.parse($(el).text()) } catch { continue }
     const items = Array.isArray(parsed) ? parsed : [parsed]
     for (const item of items) {
       if ((item as Record<string, unknown>)?.['@type'] === 'Product') {
-        products.push(item as Record<string, unknown>)
+        allProducts.push(item as Record<string, unknown>)
       }
     }
   }
-  console.log(`[scrape:tempurpedic] Product entries: ${products.length}`)
+  console.log(`[scrape:tempurpedic] Product entries: ${allProducts.length}`)
 
-  if (products.length === 0) {
+  if (allProducts.length === 0) {
     console.log(`[scrape:tempurpedic] No JSON-LD Product entries found`)
     return []
   }
 
-  // Derive base model name from the first entry by stripping the size suffix
-  // e.g. "TEMPUR-Adapt® Medium Mattress - Queen" → "TEMPUR-Adapt® Medium Mattress"
+  // Filter by keywords from the requested product name to avoid bleeding across
+  // products that share a page (e.g. Cloud Hybrid vs Cloud Memory Foam).
+  let products = allProducts
+  if (productName) {
+    const keywords = productName.toLowerCase().split(/\s+/).filter(k => k.length > 2)
+    if (keywords.length > 0) {
+      const filtered = allProducts.filter(p =>
+        keywords.every(k => String(p.name ?? '').toLowerCase().includes(k))
+      )
+      if (filtered.length > 0) {
+        console.log(`[scrape:tempurpedic] keyword filter "${productName}" → ${filtered.length}/${allProducts.length} entries`)
+        products = filtered
+      } else {
+        console.log(`[scrape:tempurpedic] keyword filter "${productName}" matched nothing — using all ${allProducts.length}`)
+      }
+    }
+  }
+
+  // Derive base model name from the first (filtered) entry by stripping the size suffix
+  // e.g. "TEMPUR-Cloud® Medium Hybrid Mattress - Queen" → "TEMPUR-Cloud® Medium Hybrid Mattress"
   const firstName = String(products[0]?.name ?? '')
   const baseModel = firstName.includes(' - ')
     ? firstName.slice(0, firstName.lastIndexOf(' - ')).trim()
@@ -1753,7 +1771,7 @@ async function scrapeTempurpedic(url: string): Promise<ScrapedVariant[]> {
   return results
 }
 
-async function scrapeForBrand(brand: string, url: string, variantFilter?: string | null, attempt = 1): Promise<ScrapedVariant[]> {
+async function scrapeForBrand(brand: string, url: string, variantFilter?: string | null, attempt = 1, productName?: string): Promise<ScrapedVariant[]> {
   const normalizedBrand = brand.toLowerCase()
   if (normalizedBrand === 'helix') return scrapeHelix(url, attempt)
   if (normalizedBrand === 'birch') return scrapeHelix(url, attempt)
@@ -1761,7 +1779,7 @@ async function scrapeForBrand(brand: string, url: string, variantFilter?: string
   if (normalizedBrand === 'dreamcloud') return scrapeNectar(url, variantFilter, 'dreamcloud')
   if (normalizedBrand === 'puffy') return scrapePuffy(url, variantFilter)
   if (normalizedBrand === 'winkbeds') return scrapeWinkBeds(url, variantFilter)
-  if (normalizedBrand === 'tempurpedic') return scrapeTempurpedic(url)
+  if (normalizedBrand === 'tempurpedic') return scrapeTempurpedic(url, productName)
   return scrapeGeneric(url, variantFilter)
 }
 
@@ -1799,7 +1817,7 @@ export async function runScrape(tracked_product_id: string, supabase: SupabaseCl
     let lastScrapeError: string | null = null
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
-        scraped = await scrapeForBrand(brand, product.manufacturer_url, variantFilter, attempt)
+        scraped = await scrapeForBrand(brand, product.manufacturer_url, variantFilter, attempt, product.label ?? undefined)
         break
       } catch (err) {
         lastScrapeError = err instanceof Error ? err.message : String(err)
