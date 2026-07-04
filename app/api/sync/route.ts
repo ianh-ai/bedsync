@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { syncWooCommerce } from '@/lib/sync-woocommerce'
 
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>
 
@@ -17,7 +18,8 @@ export async function runSync(
   storeOverride?: { shop_domain: string; access_token: string }
 ): Promise<Response> {
   try {
-    let store: { shop_domain: string; access_token: string } | null = storeOverride ?? null
+    type StoreRecord = { shop_domain: string; access_token: string; platform?: string | null; wc_consumer_key?: string | null; wc_consumer_secret?: string | null }
+    let store: StoreRecord | null = storeOverride ?? null
 
     if (!store) {
       const { data: { user } } = await supabase.auth.getUser()
@@ -28,10 +30,10 @@ export async function runSync(
 
       const { data: storeData, error: storeError } = await supabase
         .from('shopify_stores')
-        .select('shop_domain, access_token')
+        .select('shop_domain, access_token, platform, wc_consumer_key, wc_consumer_secret')
         .eq('user_id', user.id)
         .single()
-      console.log(`[sync] store: ${storeData?.shop_domain ?? 'none'} (error: ${storeError?.message ?? 'none'})`)
+      console.log(`[sync] store: ${storeData?.shop_domain ?? 'none'} platform=${storeData?.platform ?? 'shopify'} (error: ${storeError?.message ?? 'none'})`)
 
       if (!storeData) {
         return Response.json({ error: 'No store connected' }, { status: 400 })
@@ -79,6 +81,18 @@ export async function runSync(
       }
     }
     console.log(`[sync] priceBySize:`, JSON.stringify(priceBySize))
+
+    if ((store.platform ?? 'shopify') === 'woocommerce') {
+      const wcResult = await syncWooCommerce({
+        storeUrl: store.shop_domain,
+        consumerKey: store.wc_consumer_key!,
+        consumerSecret: store.wc_consumer_secret!,
+        productId: product.shopify_product_id,
+        priceBySize,
+      })
+      await supabase.from('tracked_products').update({ last_synced_at: new Date().toISOString() }).eq('id', tracked_product_id)
+      return Response.json({ success: true, ...wcResult })
+    }
 
     const shopDomain = store.shop_domain
     const accessToken = store.access_token
