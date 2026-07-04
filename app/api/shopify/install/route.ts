@@ -37,8 +37,8 @@ export async function GET(request: NextRequest) {
   const response = NextResponse.redirect(authUrl)
   response.cookies.set('shopify_oauth_nonce', nonce, {
     httpOnly: true,
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'none',
+    secure: true,
     maxAge: 600, // 10 minutes
     path: '/',
   })
