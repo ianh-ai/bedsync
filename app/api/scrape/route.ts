@@ -1816,14 +1816,14 @@ async function scrapeTempurpedic(url: string, productName?: string, attempt = 1)
       const refRegularPrice = refRegularEntry ? extractSizeAndPrice(refRegularEntry)?.price ?? null : null
 
       if (refRegularPrice != null && refRegularPrice > 0) {
-        const premium = refHybridPrice / refRegularPrice
-        console.log(`[scrape:tempurpedic] Hybrid premium (${refHybridSize}): $${refHybridPrice} / $${refRegularPrice} = ${premium.toFixed(4)}x`)
+        const premium = refHybridPrice - refRegularPrice
+        console.log(`[scrape:tempurpedic] Hybrid premium (${refHybridSize}): $${refHybridPrice} - $${refRegularPrice} = +$${premium.toFixed(2)}`)
 
         for (const entry of regularPool) {
           const sp = extractSizeAndPrice(entry)
           if (!sp || seen.has(sp.size)) continue
-          const adjusted = Math.round(sp.price * premium * 100) / 100
-          console.log(`[scrape:tempurpedic] size="${sp.size}" price=$${adjusted} (premium-adjusted from regular $${sp.price}, not directly scraped)`)
+          const adjusted = Math.round((sp.price + premium) * 100) / 100
+          console.log(`[scrape:tempurpedic] size="${sp.size}" price=$${adjusted} (regular $${sp.price} + premium $${premium.toFixed(2)} = $${adjusted}, not directly scraped)`)
           seen.set(sp.size, { title: sp.size, price: adjusted, compare_at_price: null })
         }
       } else {
