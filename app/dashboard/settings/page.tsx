@@ -7,7 +7,7 @@ export default async function SettingsPage() {
 
   const { data: store } = await supabase
     .from('shopify_stores')
-    .select('shop_domain, shop_name, sync_schedule')
+    .select('shop_domain, shop_name, sync_schedule, platform')
     .eq('user_id', user!.id)
     .single()
 
@@ -16,18 +16,14 @@ export default async function SettingsPage() {
       <h1 className="text-xl font-semibold text-gray-900 mb-6">Settings</h1>
 
       <div className="bg-white border border-gray-200 rounded-xl p-6">
-        <h2 className="text-sm font-semibold text-gray-900 mb-4">Shopify Store</h2>
+        <h2 className="text-sm font-semibold text-gray-900 mb-4">Store Connection</h2>
 
-        {store?.shop_domain && (
-          <div className="flex items-center gap-2 mb-5">
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-100 text-green-700 text-xs font-medium">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
-              Connected: {store.shop_domain}
-            </span>
-          </div>
-        )}
-
-        <StoreConnectionForm initialDomain={store?.shop_domain} initialName={store?.shop_name} initialSchedule={store?.sync_schedule ?? 'off'} />
+        <StoreConnectionForm
+          initialDomain={store?.shop_domain}
+          initialName={store?.shop_name}
+          initialPlatform={store?.platform ?? 'shopify'}
+          initialSchedule={store?.sync_schedule ?? 'off'}
+        />
       </div>
 
       <div className="bg-white border border-gray-200 rounded-xl p-6 mt-4">
