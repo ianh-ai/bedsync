@@ -55,7 +55,7 @@ export default function ProductAccordion({ products }: { products: ProductGroup[
               className="w-full flex items-center gap-4 px-5 py-4 text-left hover:bg-gray-50 transition-colors"
             >
               <svg
-                className={`w-4 h-4 text-gray-400 shrink-0 transition-transform ${isOpen ? 'rotate-90' : ''}`}
+                className={`w-4 h-4 text-gray-500 shrink-0 transition-transform ${isOpen ? 'rotate-90' : ''}`}
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -65,7 +65,7 @@ export default function ProductAccordion({ products }: { products: ProductGroup[
 
               <span className="font-medium text-gray-900 flex-1 truncate">{product.name}</span>
 
-              <span className="text-xs text-gray-400 shrink-0">
+              <span className="text-xs text-gray-500 shrink-0">
                 Last scraped {new Date(product.lastScrapedAt).toLocaleString()}
               </span>
 
@@ -91,7 +91,7 @@ export default function ProductAccordion({ products }: { products: ProductGroup[
                         <td className="py-2 font-medium text-gray-900">{row.size}</td>
                         <td className="py-2 text-gray-600 tabular-nums">{fmt(row.regular_price)}</td>
                         <td className="py-2 text-gray-900 tabular-nums">{fmt(row.sale_price)}</td>
-                        <td className="py-2 text-xs text-gray-400">
+                        <td className="py-2 text-xs text-gray-500">
                           {new Date(row.scraped_at).toLocaleString()}
                         </td>
                       </tr>

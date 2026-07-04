@@ -160,8 +160,8 @@ export default function AddProductPage() {
                     <div key={entry.id} className="px-5 py-3 flex items-center gap-3 min-h-[44px]">
                       {tracked ? (
                         <>
-                          <span className="text-sm text-gray-400 flex-1">{entry.name}</span>
-                          <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded">Already added</span>
+                          <span className="text-sm text-gray-500 flex-1">{entry.name}</span>
+                          <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">Already added</span>
                         </>
                       ) : (
                         <>
@@ -179,7 +179,7 @@ export default function AddProductPage() {
                                 placeholder="Shopify Product ID"
                                 value={shopifyId}
                                 onChange={e => setShopifyIds(prev => ({ ...prev, [entry.id]: e.target.value }))}
-                                className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 w-44 placeholder:text-gray-400"
+                                className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 w-44 placeholder:text-gray-500"
                               />
                               <button
                                 onClick={() => handleAdd(entry)}

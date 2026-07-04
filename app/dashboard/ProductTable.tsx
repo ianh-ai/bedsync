@@ -282,9 +282,9 @@ export default function ProductTable({ initialProducts }: { initialProducts: Pro
                 <td className="px-5 py-4">
                   <div>
                     <p className="font-medium text-gray-900">{product.label || product.shopify_product_title}</p>
-                    <p className="text-xs text-gray-400 mt-0.5 truncate max-w-xs">{product.manufacturer_url}</p>
+                    <p className="text-xs text-gray-500 mt-0.5 truncate max-w-xs">{product.manufacturer_url}</p>
                     {product.queen_sale_price != null && (
-                      <p className="text-xs text-gray-400 mt-0.5">
+                      <p className="text-xs text-gray-500 mt-0.5">
                         Queen ${Math.round(product.queen_sale_price).toLocaleString()}
                         {product.queen_regular_price != null && ` · was $${Math.round(product.queen_regular_price).toLocaleString()}`}
                       </p>
@@ -304,7 +304,7 @@ export default function ProductTable({ initialProducts }: { initialProducts: Pro
                 <td className="px-5 py-4 text-gray-500">
                   {product.last_synced_at
                     ? new Date(product.last_synced_at).toLocaleString()
-                    : <span className="text-gray-400">Never</span>}
+                    : <span className="text-gray-500">Never</span>}
                 </td>
                 <td className="px-5 py-4">
                   <ScrapeHealthBadge
@@ -319,7 +319,7 @@ export default function ProductTable({ initialProducts }: { initialProducts: Pro
 
                     <Link
                       href={`/dashboard/history/${product.id}`}
-                      className="p-1.5 rounded-md text-gray-400 hover:text-purple-600 hover:bg-purple-50 transition-colors"
+                      className="p-1.5 rounded-md text-gray-500 hover:text-purple-600 hover:bg-purple-50 transition-colors"
                       title="Price History"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -329,7 +329,7 @@ export default function ProductTable({ initialProducts }: { initialProducts: Pro
 
                     <Link
                       href={`/dashboard/edit/${product.id}`}
-                      className="p-1.5 rounded-md text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                      className="p-1.5 rounded-md text-gray-500 hover:text-blue-600 hover:bg-blue-50 transition-colors"
                       title="Edit"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -341,7 +341,7 @@ export default function ProductTable({ initialProducts }: { initialProducts: Pro
                       type="button"
                       onClick={() => handleDelete(product.id, product.label || product.shopify_product_title || product.id)}
                       disabled={deletingId === product.id}
-                      className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-40 transition-colors"
+                      className="p-1.5 rounded-md text-gray-500 hover:text-red-600 hover:bg-red-50 disabled:opacity-40 transition-colors"
                       title="Delete"
                     >
                       {deletingId === product.id ? (

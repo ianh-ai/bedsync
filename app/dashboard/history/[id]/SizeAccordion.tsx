@@ -67,7 +67,7 @@ export default function SizeAccordion({ sizes }: { sizes: SizeData[] }) {
               className="w-full flex items-center gap-4 px-5 py-4 text-left hover:bg-gray-50 transition-colors"
             >
               <svg
-                className={`w-4 h-4 text-gray-400 shrink-0 transition-transform ${isOpen ? 'rotate-90' : ''}`}
+                className={`w-4 h-4 text-gray-500 shrink-0 transition-transform ${isOpen ? 'rotate-90' : ''}`}
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -79,19 +79,19 @@ export default function SizeAccordion({ sizes }: { sizes: SizeData[] }) {
 
               <span className="text-gray-900 font-medium tabular-nums">{fmt(data.currentSale)}</span>
               {data.currentRegular != null && (
-                <span className="text-gray-400 text-sm line-through tabular-nums">
+                <span className="text-gray-500 text-sm line-through tabular-nums">
                   {fmt(data.currentRegular)}
                 </span>
               )}
 
-              <span className="ml-auto text-xs text-gray-400 shrink-0">
+              <span className="ml-auto text-xs text-gray-500 shrink-0">
                 {data.lastChangedAt
                   ? `Changed ${new Date(data.lastChangedAt).toLocaleDateString()}`
                   : 'No changes recorded'}
               </span>
 
               <span className={`text-xs px-2 py-0.5 rounded-full shrink-0 ${
-                data.changes.length > 0 ? 'bg-blue-50 text-blue-600' : 'bg-gray-100 text-gray-400'
+                data.changes.length > 0 ? 'bg-blue-50 text-blue-600' : 'bg-gray-100 text-gray-500'
               }`}>
                 {data.changes.length} change{data.changes.length !== 1 ? 's' : ''}
               </span>
@@ -106,7 +106,7 @@ export default function SizeAccordion({ sizes }: { sizes: SizeData[] }) {
                     Price Changes
                   </p>
                   {data.changes.length === 0 ? (
-                    <p className="text-sm text-gray-400">No price changes recorded yet.</p>
+                    <p className="text-sm text-gray-500">No price changes recorded yet.</p>
                   ) : (
                     <table className="w-full text-sm">
                       <thead>
@@ -147,7 +147,7 @@ export default function SizeAccordion({ sizes }: { sizes: SizeData[] }) {
                     Sync Events
                   </p>
                   {data.syncEntries.length === 0 ? (
-                    <p className="text-sm text-gray-400">No sync events for this size.</p>
+                    <p className="text-sm text-gray-500">No sync events for this size.</p>
                   ) : (
                     <table className="w-full text-sm">
                       <thead>

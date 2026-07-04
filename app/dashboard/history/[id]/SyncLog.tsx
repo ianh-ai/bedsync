@@ -63,7 +63,7 @@ export default function SyncLog({ events }: { events: SyncEvent[] }) {
                 <td className="px-5 py-3 text-gray-600">
                   {event.details.length} variant{event.details.length !== 1 ? 's' : ''}
                 </td>
-                <td className="px-5 py-3 text-gray-400">
+                <td className="px-5 py-3 text-gray-500">
                   <svg
                     className={`w-4 h-4 transition-transform ${expanded.has(event.id) ? 'rotate-90' : ''}`}
                     fill="none"
