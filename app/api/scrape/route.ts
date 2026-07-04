@@ -1,7 +1,7 @@
 import { load } from 'cheerio'
 import { createClient } from '@/lib/supabase/server'
 
-type ScrapedVariant = {
+export type ScrapedVariant = {
   title: string
   price: number           // current/sale price (what consumers pay)
   compare_at_price: number | null  // MSRP/list price (strikethrough), or null if no sale
@@ -1771,7 +1771,7 @@ async function scrapeTempurpedic(url: string, productName?: string): Promise<Scr
   return results
 }
 
-async function scrapeForBrand(brand: string, url: string, variantFilter?: string | null, attempt = 1, productName?: string): Promise<ScrapedVariant[]> {
+export async function scrapeForBrand(brand: string, url: string, variantFilter?: string | null, attempt = 1, productName?: string): Promise<ScrapedVariant[]> {
   const normalizedBrand = brand.toLowerCase()
   if (normalizedBrand === 'helix') return scrapeHelix(url, attempt)
   if (normalizedBrand === 'birch') return scrapeHelix(url, attempt)
