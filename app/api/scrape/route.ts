@@ -1679,12 +1679,27 @@ const TEMPURPEDIC_SIZE_MAP: Record<string, string> = {
 }
 const TEMPURPEDIC_SIZE_SKIP = new Set(['Split King', 'Split CA King', 'RV King'])
 
-async function scrapeTempurpedic(url: string, productName?: string): Promise<ScrapedVariant[]> {
-  console.log(`[scrape:tempurpedic] url="${url}" productName="${productName ?? ''}"`)
-  const res = await fetch(url, { headers: BROWSER_HEADERS })
-  console.log(`[scrape:tempurpedic] HTML status: ${res.status}`)
-  if (!res.ok) throw new Error(`HTML fetch failed: ${res.status}`)
-  const html = await res.text()
+async function scrapeTempurpedic(url: string, productName?: string, attempt = 1): Promise<ScrapedVariant[]> {
+  const isHybrid = (productName ?? '').toLowerCase().includes('hybrid')
+  console.log(`[scrape:tempurpedic] url="${url}" productName="${productName ?? ''}" attempt=${attempt} isHybrid=${isHybrid}`)
+
+  let html: string
+  if (process.env.SCRAPER_API_KEY) {
+    // Hybrid prices are JS-rendered; force render=true. Non-hybrid: render=false on attempt 1, render=true on retries.
+    const render = (isHybrid || attempt > 1) ? 'true' : 'false'
+    const proxyUrl = `http://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&url=${encodeURIComponent(url)}&render=${render}`
+    console.log(`[scrape:tempurpedic] ScraperAPI render=${render}`)
+    const res = await fetch(proxyUrl)
+    const bodyText = await res.text()
+    console.log(`[scrape:tempurpedic] ScraperAPI status: ${res.status}, body (first 500): ${bodyText.slice(0, 500)}`)
+    if (!res.ok) throw new Error(`ScraperAPI fetch failed: ${res.status}`)
+    html = bodyText
+  } else {
+    const res = await fetch(url, { headers: BROWSER_HEADERS })
+    console.log(`[scrape:tempurpedic] HTML status: ${res.status}`)
+    if (!res.ok) throw new Error(`HTML fetch failed: ${res.status}`)
+    html = await res.text()
+  }
 
   const $ = load(html)
   const ldJsonScripts = $('script[type="application/ld+json"]').toArray()
@@ -1779,7 +1794,7 @@ async function scrapeForBrand(brand: string, url: string, variantFilter?: string
   if (normalizedBrand === 'dreamcloud') return scrapeNectar(url, variantFilter, 'dreamcloud')
   if (normalizedBrand === 'puffy') return scrapePuffy(url, variantFilter)
   if (normalizedBrand === 'winkbeds') return scrapeWinkBeds(url, variantFilter)
-  if (normalizedBrand === 'tempurpedic') return scrapeTempurpedic(url, productName)
+  if (normalizedBrand === 'tempurpedic') return scrapeTempurpedic(url, productName, attempt)
   return scrapeGeneric(url, variantFilter)
 }
 
