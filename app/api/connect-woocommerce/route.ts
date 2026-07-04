@@ -21,7 +21,8 @@ export async function POST(request: Request) {
     return Response.json({ ok: false, error: 'storeUrl, consumerKey, and consumerSecret are required' }, { status: 400 })
   }
 
-  const base = storeUrl.replace(/\/$/, '')
+  const normalized = /^https?:\/\//i.test(storeUrl) ? storeUrl : `https://${storeUrl}`
+  const base = normalized.replace(/\/$/, '')
   const testUrl = `${base}/wp-json/wc/v3/system_status`
   console.log(`[connect-woocommerce] Testing credentials: GET ${testUrl}`)
 
