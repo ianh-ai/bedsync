@@ -569,15 +569,15 @@ export default function HomePage() {
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500" />
               </span>
-              {pricingCount.toLocaleString()} products synced today
+              {pricingCount.toLocaleString()} variants synced today
             </div>
           </div>
 
           <div className="max-w-5xl mx-auto grid sm:grid-cols-3 gap-5 mb-6">
             {[
-              { name: 'Starter', price: '$29', features: ['Up to 25 products', '1 store', 'Daily sync', 'Price history'], popular: false },
-              { name: 'Pro', price: '$79', features: ['Up to 100 products', '1 store', 'Daily sync', 'Price history'], popular: true },
-              { name: 'Business', price: '$149', features: ['Unlimited products', '1 store', 'Daily sync', 'Price history', 'Priority support'], popular: false },
+              { name: 'Starter', price: '$49', features: ['2 brands', 'Daily sync', 'Price history'], popular: false },
+              { name: 'Pro', price: '$99', features: ['5 brands', 'Daily sync', 'Price history'], popular: true },
+              { name: 'Business', price: '$149', features: ['Unlimited brands', 'Daily sync', 'Price history', 'Priority support'], popular: false },
             ].map(({ name, price, features, popular }) => (
               <div key={name} className={`relative rounded-2xl p-6 flex flex-col ${popular ? 'bg-blue-600 shadow-2xl shadow-blue-200' : 'bg-white border border-gray-200 shadow-sm'}`}>
                 {popular && (
