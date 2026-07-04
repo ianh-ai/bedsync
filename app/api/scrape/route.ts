@@ -414,9 +414,27 @@ async function scrapeGeneric(url: string, variantFilter?: string | null): Promis
           }
         }
 
-        const pool = targetOption2
+        let pool = targetOption2
           ? variants.filter(v => String(v.option2 ?? '') === targetOption2)
           : variants
+
+        // When no ?variant=ID pinned a specific option2, fall back to the
+        // variant_filter field as a case-insensitive option2 substring match.
+        // e.g. variant_filter="Plush Pillow-Top" narrows Avocado's 18 variants
+        // to just the 6 Plush Pillow-Top sizes before deduplication.
+        if (targetOption2 === null && variantFilter) {
+          const filterLower = variantFilter.toLowerCase()
+          const filtered = pool.filter(v =>
+            String(v.option2 ?? '').toLowerCase().includes(filterLower)
+          )
+          if (filtered.length > 0) {
+            console.log(`[scrape:generic] variant_filter="${variantFilter}" narrowed via option2 substring: ${pool.length} → ${filtered.length}`)
+            pool = filtered
+          } else {
+            console.log(`[scrape:generic] variant_filter="${variantFilter}" matched no option2 values — using all ${pool.length} variants`)
+          }
+        }
+
         console.log(`[scrape:generic] Pool after option2 filter: ${pool.length} of ${variants.length} variants`)
 
         // Deduplicate by size (option1), preferring the best representative per size:
