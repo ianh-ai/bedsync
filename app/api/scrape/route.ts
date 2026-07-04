@@ -10,7 +10,8 @@ export type ScrapedVariant = {
 
 function normalizeSize(title: string): string | null {
   const t = title.toLowerCase()
-  if (t.includes('cal king') || t.includes('california king') || t.includes('calking')) return 'Cal King'
+  if (t.includes('split')) return null  // Split King / Split CA King → not a standard size
+  if (t.includes('cal king') || t.includes('ca king') || t.includes('california king') || t.includes('calking')) return 'Cal King'
   if (t.includes('twin xl') || t.includes('twin x') || t.includes('twinxl')) return 'Twin XL'
   if (t.includes('twin')) return 'Twin'
   if (t.includes('full')) return 'Full'
@@ -121,13 +122,22 @@ async function scrapeHelix(url: string, attempt = 1): Promise<ScrapedVariant[]> 
     const proxyUrl = `http://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&url=${encodeURIComponent(targetUrl)}&render=${render}`
     console.log(`[scrape:helix] ScraperAPI target URL: ${targetUrl}`)
     console.log(`[scrape:helix] ScraperAPI proxy URL (key redacted): http://api.scraperapi.com?api_key=REDACTED&url=${encodeURIComponent(targetUrl)}&render=${render}`)
-    res = await fetch(proxyUrl)
-    const bodyText = await res.text()
-    console.log(`[scrape:helix] ScraperAPI status: ${res.status}`)
+    let rawRes = await fetch(proxyUrl)
+    let bodyText = await rawRes.text()
+    console.log(`[scrape:helix] ScraperAPI status: ${rawRes.status}`)
     console.log(`[scrape:helix] ScraperAPI body (first 500 chars): ${bodyText.slice(0, 500)}`)
-    if (!res.ok) throw new Error(`ScraperAPI fetch failed: ${res.status}`)
+    // On 500 with static mode, retry immediately with JS rendering before letting runScrape retry
+    if (rawRes.status === 500 && render === 'false') {
+      console.log(`[scrape:helix] ScraperAPI 500 on render=false — retrying with render=true`)
+      const retryUrl = `http://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&url=${encodeURIComponent(targetUrl)}&render=true`
+      rawRes = await fetch(retryUrl)
+      bodyText = await rawRes.text()
+      console.log(`[scrape:helix] ScraperAPI retry status: ${rawRes.status}`)
+      console.log(`[scrape:helix] ScraperAPI retry body (first 500 chars): ${bodyText.slice(0, 500)}`)
+    }
+    if (!rawRes.ok) throw new Error(`ScraperAPI fetch failed: ${rawRes.status}`)
     // Re-wrap the already-consumed body so the rest of the function can call res.text() / res.ok normally
-    res = new Response(bodyText, { status: res.status, headers: res.headers })
+    res = new Response(bodyText, { status: rawRes.status, headers: rawRes.headers })
   } else {
     console.warn(`[scrape:helix] SCRAPER_API_KEY not set, falling back to direct fetch (may 403 on Vercel)`)
     res = await fetch(targetUrl, {
@@ -397,33 +407,43 @@ async function scrapeGeneric(url: string, variantFilter?: string | null): Promis
         // consistently price the same option across all sizes.
         // Shopify product.json uses option1/option2/option3 (no underscores).
         const variantParam = urlObj.searchParams.get('variant')
-        let targetOption2: string | null = null
+        let pool = variants
 
         if (variantParam) {
           console.log(`[scrape:generic] Looking for variant ID: ${variantParam}`)
           const pinned = variants.find(v => v.id == variantParam || String(v.id) === String(variantParam))
           if (pinned) {
             console.log(`[scrape:generic] Matched variant: option1="${pinned.option1}" option2="${pinned.option2}" option3="${pinned.option3}"`)
-            if (pinned.option2 != null) {
-              targetOption2 = String(pinned.option2)
-              console.log(`[scrape:generic] Pinning to option2="${targetOption2}"`)
-            } else {
-              console.log(`[scrape:generic] Matched variant has no option2 — using all variants`)
+            // Find the option key whose value (a) is not a size and (b) actually narrows the pool.
+            // Try option2 first, then option3, then option1. This handles products where the
+            // model/feel is in option1 and size is in option2 (e.g. Brooklyn Bedding).
+            let narrowed = false
+            for (const key of ['option2', 'option3', 'option1'] as const) {
+              const val = pinned[key]
+              if (val == null) continue
+              const s = String(val).trim()
+              if (!s || normalizeSize(s)) continue  // skip blank or size values
+              const candidate = variants.filter(v => String(v[key] ?? '') === s)
+              if (candidate.length > 0 && candidate.length < variants.length) {
+                console.log(`[scrape:generic] Pinning by ${key}="${s}" → ${candidate.length}/${variants.length} variants`)
+                pool = candidate
+                narrowed = true
+                break
+              }
+            }
+            if (!narrowed) {
+              console.log(`[scrape:generic] No discriminating option found — using all ${variants.length} variants`)
             }
           } else {
             console.log(`[scrape:generic] Variant ID ${variantParam} not found in JSON — using all variants`)
           }
         }
 
-        let pool = targetOption2
-          ? variants.filter(v => String(v.option2 ?? '') === targetOption2)
-          : variants
-
-        // When no ?variant=ID pinned a specific option2, fall back to the
+        // When no ?variant=ID pinned a specific model/feel, fall back to the
         // variant_filter field as a case-insensitive option2 substring match.
         // e.g. variant_filter="Plush Pillow-Top" narrows Avocado's 18 variants
         // to just the 6 Plush Pillow-Top sizes before deduplication.
-        if (targetOption2 === null && variantFilter) {
+        if (!variantParam && variantFilter) {
           const filterLower = variantFilter.toLowerCase()
           const filtered = pool.filter(v =>
             String(v.option2 ?? '').toLowerCase().includes(filterLower)
@@ -446,13 +466,16 @@ async function scrapeGeneric(url: string, variantFilter?: string | null): Promis
         let hasCompareAt = false
 
         for (const v of pool) {
-          // option1 is always the size in Shopify product.json for mattress products
+          // option1 is the size in most Shopify products; fall back to option2 for brands
+          // that put the model in option1 and size in option2 (e.g. Brooklyn Bedding).
           const option1 = String(v.option1 ?? '')
-          const size = normalizeSize(option1)
+          let size = normalizeSize(option1)
+          const sizeSource = size ? option1 : String(v.option2 ?? '')
+          if (!size) size = normalizeSize(sizeSource)
           if (!size) continue
           // Skip bundle/add-on variants (e.g. "Twin with Frost Cooling Cover") when a
           // clean size variant already exists, so they don't overwrite the real price.
-          if (option1.includes(' with ') && best.has(size)) continue
+          if (sizeSource.includes(' with ') && best.has(size)) continue
           const regularPrice = v.compare_at_price != null ? parseFloat(String(v.compare_at_price)) : null
           const validCompareAt = regularPrice != null && !isNaN(regularPrice)
           if (validCompareAt) hasCompareAt = true
@@ -1713,7 +1736,12 @@ async function scrapeTempurpedic(url: string, productName?: string): Promise<Scr
   console.log(`[scrape:tempurpedic] Product entries: ${allProducts.length}`)
 
   if (allProducts.length === 0) {
-    console.log(`[scrape:tempurpedic] No JSON-LD Product entries found`)
+    const isWAFBlock = html.includes('aws-waf') || html.toLowerCase().includes('captcha') || html.length < 5000
+    if (isWAFBlock) {
+      console.error(`[scrape:tempurpedic] WAF/captcha challenge detected (html=${html.length} bytes) — JS rendering required, but scrapeTempurpedic uses direct fetch. No variants returned.`)
+    } else {
+      console.error(`[scrape:tempurpedic] No JSON-LD Product entries found (html=${html.length} bytes) — page may require JS rendering. No variants returned.`)
+    }
     return []
   }
 

@@ -81,7 +81,7 @@ export const CATALOG: CatalogBrand[] = [
   {
     displayName: 'Nectar', slug: 'nectar',
     products: [
-      { id: 'nectar-classic-foam', name: 'Classic Memory Foam', brand: 'nectar', url: 'https://www.nectarsleep.com/mattress' },
+      { id: 'nectar-classic-foam', name: 'Classic Memory Foam', brand: 'nectar', url: 'https://www.nectarsleep.com/mattress', apiProductName: 'nectar-classic-mattress' },
       { id: 'nectar-classic-hybrid', name: 'Classic Hybrid', brand: 'nectar', url: 'https://www.nectarsleep.com/mattresses/hybrid-mattress' },
       { id: 'nectar-premier-foam', name: 'Premier Memory Foam', brand: 'nectar', url: 'https://www.nectarsleep.com/mattresses/premier-memory-foam-mattress' },
       { id: 'nectar-premier-hybrid', name: 'Premier Hybrid', brand: 'nectar', url: 'https://www.nectarsleep.com/mattresses/premier-hybrid-mattress' },
