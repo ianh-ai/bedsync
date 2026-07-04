@@ -72,8 +72,9 @@ export async function syncWooCommerce({
     }
 
     const { regular_price, sale_price } = priceBySize[matchedSize]
-    const wcRegular = regular_price.toFixed(2)
-    const wcSale = sale_price != null ? sale_price.toFixed(2) : ''
+    // regular_price can be null at runtime even though the type says number
+    const wcRegular = regular_price != null ? regular_price.toFixed(2) : sale_price!.toFixed(2)
+    const wcSale = regular_price != null && sale_price != null ? sale_price.toFixed(2) : ''
 
     const putUrl = `${base}/wp-json/wc/v3/products/${productId}/variations/${variation.id}`
     console.log(`[wc-sync] PUT ${putUrl} — size="${matchedSize}" regular=${wcRegular} sale=${wcSale || '(clear)'}`)
