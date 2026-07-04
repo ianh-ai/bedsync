@@ -301,10 +301,13 @@ export default function ProductTable({ initialProducts }: { initialProducts: Pro
                     ? `+${product.markup_value}% above sale`
                     : product.price_rule?.replace(/_/g, ' ') || '—'}
                 </td>
-                <td className="px-5 py-4 text-gray-500">
+                <td className="px-5 py-4 text-gray-500 text-xs">
                   {product.last_synced_at
-                    ? new Date(product.last_synced_at).toLocaleString()
-                    : <span className="text-gray-500">Never</span>}
+                    ? new Date(product.last_synced_at).toLocaleString('en-US', {
+                        month: 'short', day: 'numeric', year: 'numeric',
+                        hour: 'numeric', minute: '2-digit',
+                      })
+                    : 'Never'}
                 </td>
                 <td className="px-5 py-4">
                   <ScrapeHealthBadge
