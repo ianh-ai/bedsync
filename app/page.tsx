@@ -185,11 +185,9 @@ function DemoPlayer() {
 // ── FAQ accordion ─────────────────────────────────────────────────────────────
 
 const FAQ_ITEMS = [
-  { q: 'How does BedSync get manufacturer prices?', a: 'We scrape manufacturer websites daily using a custom scraper built for each brand. Prices are pulled directly from the product pages.' },
   { q: 'Will this work with my existing Shopify products?', a: 'Yes. You just need your existing Shopify Product ID — BedSync handles the rest.' },
-  { q: "What if a brand's website changes?", a: 'We monitor our scrapers and update them when brand websites change. Priority is given to Pro and Business plan users.' },
+  { q: "What if a brand's website changes?", a: 'We monitor our integrations and update them when brand websites change. Priority is given to Pro and Business plan users.' },
   { q: 'Can I track both sale price and regular price?', a: "Yes. BedSync captures both the regular (compare-at) price and sale price when available, and maps both to your store's variants." },
-  { q: 'How do I know when prices change?', a: 'Pro and Business plans receive email alerts whenever a tracked product\'s price changes.' },
   { q: 'Is WooCommerce fully supported?', a: 'Yes. Connect with your Consumer Key and Secret and BedSync syncs prices the same way it does for Shopify.' },
 ]
 
@@ -430,7 +428,7 @@ export default function HomePage() {
           </div>
           <div className="max-w-5xl mx-auto grid sm:grid-cols-3 gap-5">
             {[
-              { icon: '🔗', title: 'Scrapes manufacturer prices daily', body: 'Pulls current sale and regular prices directly from brand websites.' },
+              { icon: '🔗', title: 'Monitors manufacturer prices daily', body: 'Pulls current sale and regular prices directly from brand websites.' },
               { icon: '📋', title: 'Matches your product variants', body: 'Automatically maps sizes (Twin, Queen, King, etc.) to your store\'s variants.' },
               { icon: '🔄', title: 'Syncs to Shopify or WooCommerce', body: 'Updates your store prices at 6am every morning without you lifting a finger.' },
             ].map(({ icon, title, body }) => (
