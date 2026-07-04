@@ -568,8 +568,8 @@ export default function HomePage() {
           <div className="max-w-5xl mx-auto grid sm:grid-cols-3 gap-5 mb-6">
             {[
               { name: 'Starter', price: '$29', features: ['Up to 25 products', '1 store', 'Daily sync', 'Price history'], popular: false },
-              { name: 'Pro', price: '$79', features: ['Up to 100 products', '1 store', 'Daily sync', 'Price history', 'Email alerts on price changes'], popular: true },
-              { name: 'Business', price: '$149', features: ['Unlimited products', '1 store', 'Daily sync', 'Price history', 'Email alerts', 'Priority support'], popular: false },
+              { name: 'Pro', price: '$79', features: ['Up to 100 products', '1 store', 'Daily sync', 'Price history'], popular: true },
+              { name: 'Business', price: '$149', features: ['Unlimited products', '1 store', 'Daily sync', 'Price history', 'Priority support'], popular: false },
             ].map(({ name, price, features, popular }) => (
               <div key={name} className={`relative rounded-2xl p-6 flex flex-col ${popular ? 'bg-blue-600 shadow-2xl shadow-blue-200' : 'bg-white border border-gray-200 shadow-sm'}`}>
                 {popular && (
