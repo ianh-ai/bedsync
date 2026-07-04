@@ -81,7 +81,7 @@ export const CATALOG: CatalogBrand[] = [
   {
     displayName: 'Nectar', slug: 'nectar',
     products: [
-      { id: 'nectar-classic-foam', name: 'Classic Memory Foam', brand: 'nectar', url: 'https://www.nectarsleep.com/mattress', apiProductName: 'nectar-classic-mattress' },
+      { id: 'nectar-classic-foam', name: 'Classic Memory Foam', brand: 'nectar', url: 'https://www.nectarsleep.com/mattress', apiProductName: 'nectar-51-classic-foam-mattress' },
       { id: 'nectar-classic-hybrid', name: 'Classic Hybrid', brand: 'nectar', url: 'https://www.nectarsleep.com/mattresses/hybrid-mattress' },
       { id: 'nectar-premier-foam', name: 'Premier Memory Foam', brand: 'nectar', url: 'https://www.nectarsleep.com/mattresses/premier-memory-foam-mattress' },
       { id: 'nectar-premier-hybrid', name: 'Premier Hybrid', brand: 'nectar', url: 'https://www.nectarsleep.com/mattresses/premier-hybrid-mattress' },
@@ -133,7 +133,7 @@ export const CATALOG: CatalogBrand[] = [
       { id: 'dreamcloud-luxe-hybrid', name: 'Luxe Hybrid', brand: 'dreamcloud', url: 'https://www.dreamcloudsleep.com/mattresses/luxe-hybrid-mattress' },
       { id: 'dreamcloud-luxe-foam', name: 'Luxe Memory Foam', brand: 'dreamcloud', url: 'https://www.dreamcloudsleep.com/mattresses/luxe-memory-foam-mattress' },
       { id: 'dreamcloud-ultra-hybrid', name: 'Ultra Hybrid', brand: 'dreamcloud', url: 'https://www.dreamcloudsleep.com/mattresses/ultra-hybrid-mattress' },
-      { id: 'dreamcloud-ultra-foam', name: 'Ultra Memory Foam', brand: 'dreamcloud', url: 'https://www.dreamcloudsleep.com/mattresses/ultra-memory-foam-mattress' },
+      { id: 'dreamcloud-ultra-foam', name: 'Ultra Memory Foam', brand: 'dreamcloud', url: 'https://www.dreamcloudsleep.com/mattresses/ultra-memory-foam-mattress', apiProductName: 'dreamcloud-40-ultra-foam-mattress' },
       { id: 'dreamcloud-pressure-smart', name: 'Pressure Smart', brand: 'dreamcloud', url: 'https://www.dreamcloudsleep.com/mattresses/pressuresmart-firm-mattress' },
     ],
   },
@@ -169,7 +169,7 @@ export const CATALOG: CatalogBrand[] = [
   {
     displayName: 'Tempur-Pedic', slug: 'tempurpedic',
     products: [
-      { id: 'tempur-cloud-foam', name: 'Cloud Memory Foam', brand: 'tempurpedic', url: 'https://www.tempurpedic.com/shop-mattresses/tempur-cloud-mattress/v/3882/' },
+      { id: 'tempur-cloud-foam', name: 'Cloud Memory Foam', brand: 'tempurpedic', url: 'https://www.tempurpedic.com/shop-mattresses/tempur-cloud-mattress/' },
       { id: 'tempur-adapt', name: 'Adapt', brand: 'tempurpedic', url: 'https://www.tempurpedic.com/shop-mattresses/adapt-collection/v/4120/' },
       { id: 'tempur-pro-adapt', name: 'Pro Adapt', brand: 'tempurpedic', url: 'https://www.tempurpedic.com/shop-mattresses/adapt-collection/v/4186/' },
       { id: 'tempur-luxe-adapt', name: 'Luxe Adapt', brand: 'tempurpedic', url: 'https://www.tempurpedic.com/shop-mattresses/adapt-collection/v/4201/' },

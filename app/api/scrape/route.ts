@@ -1269,7 +1269,10 @@ async function scrapeNectar(url: string, variantFilter?: string | null, apiBrand
   }
 
   const isOnSale = typeof listPriceCents === 'number' && listPriceCents > basePriceCents
-  console.log(`[scrape:nectar] basePriceCents=${basePriceCents} listPriceCents=${listPriceCents ?? 'null'} isOnSale=${isOnSale}`)
+  // Note: basePriceCents is the API's "current price" for the base size (usually Twin).
+  // If basePriceCents looks wrong (e.g. matches list/MSRP rather than sale price),
+  // the API may not expose the promotional price — check pricing.price vs pricing.listPrice.
+  console.log(`[scrape:nectar] basePriceCents=${basePriceCents} ($${(basePriceCents/100).toFixed(2)}) listPriceCents=${listPriceCents ?? 'null'} isOnSale=${isOnSale}`)
 
   // Size options: product.properties → find entry with name="Size" → .options[]
   const properties = product.properties as Array<Record<string, unknown>> | undefined
@@ -1304,7 +1307,7 @@ async function scrapeNectar(url: string, variantFilter?: string | null, apiBrand
     const salePrice = saleCents / 100
     const regularPrice = regularCents != null ? regularCents / 100 : null
 
-    console.log(`[scrape:nectar] size="${size}" priceDiff=${priceDiff} sale=$${salePrice} regular=${regularPrice != null ? `$${regularPrice}` : 'null'}`)
+    console.log(`[scrape:nectar] size="${size}" priceDiff=${priceDiff} (basePriceCents${priceDiff >= 0 ? '+' : ''}${priceDiff}=${saleCents}) sale=$${salePrice.toFixed(2)} regular=${regularPrice != null ? `$${regularPrice.toFixed(2)}` : 'null'}`)
     results.push({
       title: size,
       price: salePrice,
@@ -1763,10 +1766,14 @@ async function scrapeTempurpedic(url: string, productName?: string): Promise<Scr
     }
   }
 
-  // Derive base model name from the first (filtered) entry by stripping the size suffix
-  // e.g. "TEMPUR-Cloud® Medium Hybrid Mattress - Queen" → "TEMPUR-Cloud® Medium Hybrid Mattress"
+  // Derive base model name from the first (filtered) entry by stripping the size suffix.
+  // Breeze products use ", CA King" (comma) while other products use " - Queen" (dash).
   const firstName = String(products[0]?.name ?? '')
-  const baseModel = firstName.includes(' - ')
+  const COMMA_SIZES = ['Split CA King', 'Split King', 'RV King', 'Twin Long', 'CA King', 'King', 'Queen', 'Full', 'Twin']
+  const trailingCommaSize = COMMA_SIZES.find(s => firstName.endsWith(', ' + s))
+  const baseModel = trailingCommaSize
+    ? firstName.slice(0, firstName.length - trailingCommaSize.length - 2).trim()
+    : firstName.includes(' - ')
     ? firstName.slice(0, firstName.lastIndexOf(' - ')).trim()
     : firstName
   console.log(`[scrape:tempurpedic] Base model: "${baseModel}"`)
@@ -1777,8 +1784,12 @@ async function scrapeTempurpedic(url: string, productName?: string): Promise<Scr
     const name = String(entry.name ?? '')
     if (!name.startsWith(baseModel)) continue
 
-    // Size is the part after " - "
-    const suffix = name.includes(' - ') ? name.slice(name.lastIndexOf(' - ') + 3).trim() : ''
+    // Size is the part after " - " (most products) or ", " (Breeze collection)
+    const suffix = name.includes(' - ')
+      ? name.slice(name.lastIndexOf(' - ') + 3).trim()
+      : name.startsWith(baseModel + ', ')
+      ? name.slice(baseModel.length + 2).trim()
+      : ''
     if (TEMPURPEDIC_SIZE_SKIP.has(suffix)) {
       console.log(`[scrape:tempurpedic] Skipping "${suffix}"`)
       continue
