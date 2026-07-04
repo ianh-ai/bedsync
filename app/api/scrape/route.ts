@@ -1620,6 +1620,90 @@ async function scrapeWinkBeds(url: string, variantFilter?: string | null): Promi
   return scrapeGeneric(resolvedUrl, variantFilter)
 }
 
+const TEMPURPEDIC_SIZE_MAP: Record<string, string> = {
+  'Twin': 'Twin',
+  'Twin Long': 'Twin XL',
+  'Full': 'Full',
+  'Queen': 'Queen',
+  'King': 'King',
+  'CA King': 'Cal King',
+}
+const TEMPURPEDIC_SIZE_SKIP = new Set(['Split King', 'Split CA King', 'RV King'])
+
+async function scrapeTempurpedic(url: string): Promise<ScrapedVariant[]> {
+  console.log(`[scrape:tempurpedic] url="${url}"`)
+  const res = await fetch(url, { headers: BROWSER_HEADERS })
+  console.log(`[scrape:tempurpedic] HTML status: ${res.status}`)
+  if (!res.ok) throw new Error(`HTML fetch failed: ${res.status}`)
+  const html = await res.text()
+
+  const $ = load(html)
+  const ldJsonScripts = $('script[type="application/ld+json"]').toArray()
+  console.log(`[scrape:tempurpedic] Found ${ldJsonScripts.length} JSON-LD script(s)`)
+
+  // Collect all Product entries from all JSON-LD blocks
+  const products: Array<Record<string, unknown>> = []
+  for (const el of ldJsonScripts) {
+    let parsed: unknown
+    try { parsed = JSON.parse($(el).text()) } catch { continue }
+    const items = Array.isArray(parsed) ? parsed : [parsed]
+    for (const item of items) {
+      if ((item as Record<string, unknown>)?.['@type'] === 'Product') {
+        products.push(item as Record<string, unknown>)
+      }
+    }
+  }
+  console.log(`[scrape:tempurpedic] Product entries: ${products.length}`)
+
+  if (products.length === 0) {
+    console.log(`[scrape:tempurpedic] No JSON-LD Product entries found`)
+    return []
+  }
+
+  // Derive base model name from the first entry by stripping the size suffix
+  // e.g. "TEMPUR-Adapt® Medium Mattress - Queen" → "TEMPUR-Adapt® Medium Mattress"
+  const firstName = String(products[0]?.name ?? '')
+  const baseModel = firstName.includes(' - ')
+    ? firstName.slice(0, firstName.lastIndexOf(' - ')).trim()
+    : firstName
+  console.log(`[scrape:tempurpedic] Base model: "${baseModel}"`)
+
+  const seen = new Map<string, ScrapedVariant>()
+
+  for (const entry of products) {
+    const name = String(entry.name ?? '')
+    if (!name.startsWith(baseModel)) continue
+
+    // Size is the part after " - "
+    const suffix = name.includes(' - ') ? name.slice(name.lastIndexOf(' - ') + 3).trim() : ''
+    if (TEMPURPEDIC_SIZE_SKIP.has(suffix)) {
+      console.log(`[scrape:tempurpedic] Skipping "${suffix}"`)
+      continue
+    }
+    const mappedSize = TEMPURPEDIC_SIZE_MAP[suffix]
+    if (!mappedSize) {
+      console.log(`[scrape:tempurpedic] Unknown size suffix "${suffix}" in "${name}" — skipping`)
+      continue
+    }
+    if (seen.has(mappedSize)) continue
+
+    const offers = entry.offers as Record<string, unknown> | undefined
+    const rawPrice = offers?.price
+    const price = rawPrice != null ? parseFloat(String(rawPrice)) : null
+    if (price == null || isNaN(price) || price === 0) {
+      console.log(`[scrape:tempurpedic] No valid price for "${name}"`)
+      continue
+    }
+
+    console.log(`[scrape:tempurpedic] size="${mappedSize}" price=$${price}`)
+    seen.set(mappedSize, { title: mappedSize, price, compare_at_price: null })
+  }
+
+  const results = [...seen.values()]
+  console.log(`[scrape:tempurpedic] ✓ ${results.length} size(s) extracted`)
+  return results
+}
+
 async function scrapeForBrand(brand: string, url: string, variantFilter?: string | null, attempt = 1): Promise<ScrapedVariant[]> {
   const normalizedBrand = brand.toLowerCase()
   if (normalizedBrand === 'helix') return scrapeHelix(url, attempt)
@@ -1628,6 +1712,7 @@ async function scrapeForBrand(brand: string, url: string, variantFilter?: string
   if (normalizedBrand === 'dreamcloud') return scrapeNectar(url, variantFilter, 'dreamcloud')
   if (normalizedBrand === 'puffy') return scrapePuffy(url, variantFilter)
   if (normalizedBrand === 'winkbeds') return scrapeWinkBeds(url, variantFilter)
+  if (normalizedBrand === 'tempurpedic') return scrapeTempurpedic(url)
   return scrapeGeneric(url, variantFilter)
 }
 
