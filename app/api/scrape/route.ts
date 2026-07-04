@@ -402,6 +402,8 @@ async function scrapeGeneric(url: string, variantFilter?: string | null): Promis
       if (Array.isArray(variants) && variants.length > 0) {
         console.log(`[scrape:generic] Total variants in JSON: ${variants.length}`)
         console.log('[scrape:generic] First 5 variant IDs in JSON:', variants.slice(0, 5).map(v => `${v.id} (${v.option1}/${v.option2}/${v.option3})`))
+        const uniqueOpt1 = [...new Set(variants.map(v => String(v.option1 ?? '')))]
+        console.log('[scrape:generic] All unique option1 values:', JSON.stringify(uniqueOpt1))
 
         // If the URL had ?variant=ID, pin the sub-option (feel/firmness/cover) so we
         // consistently price the same option across all sizes.
@@ -1291,7 +1293,7 @@ async function scrapeNectar(url: string, variantFilter?: string | null, apiBrand
   }
 
   // ── Step 4: build ScrapedVariant[] ────────────────────────────────────────
-  const results: ScrapedVariant[] = []
+  let results: ScrapedVariant[] = []
   for (const opt of sizeOptions) {
     const rawTitle = String(opt.title ?? opt.name ?? opt.label ?? opt.value ?? '')
     const size = normalizeSize(rawTitle)
