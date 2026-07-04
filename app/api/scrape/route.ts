@@ -11,7 +11,7 @@ export type ScrapedVariant = {
 function normalizeSize(title: string): string | null {
   const t = title.toLowerCase()
   if (t.includes('split')) return null  // Split King / Split CA King → not a standard size
-  if (t.includes('cal king') || t.includes('ca king') || t.includes('california king') || t.includes('calking')) return 'Cal King'
+  if (t.includes('cal king') || t.includes('cal. king') || t.includes('ca king') || t.includes('california king') || t.includes('calking')) return 'Cal King'
   if (t.includes('twin xl') || t.includes('twin x') || t.includes('twinxl')) return 'Twin XL'
   if (t.includes('twin')) return 'Twin'
   if (t.includes('full')) return 'Full'
