@@ -1679,27 +1679,12 @@ const TEMPURPEDIC_SIZE_MAP: Record<string, string> = {
 }
 const TEMPURPEDIC_SIZE_SKIP = new Set(['Split King', 'Split CA King', 'RV King'])
 
-async function scrapeTempurpedic(url: string, productName?: string, attempt = 1): Promise<ScrapedVariant[]> {
-  const isHybrid = (productName ?? '').toLowerCase().includes('hybrid')
-  console.log(`[scrape:tempurpedic] url="${url}" productName="${productName ?? ''}" attempt=${attempt} isHybrid=${isHybrid}`)
-
-  let html: string
-  if (process.env.SCRAPER_API_KEY) {
-    // Hybrid prices are JS-rendered; force render=true. Non-hybrid: render=false on attempt 1, render=true on retries.
-    const render = (isHybrid || attempt > 1) ? 'true' : 'false'
-    const proxyUrl = `http://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&url=${encodeURIComponent(url)}&render=${render}`
-    console.log(`[scrape:tempurpedic] ScraperAPI render=${render}`)
-    const res = await fetch(proxyUrl)
-    const bodyText = await res.text()
-    console.log(`[scrape:tempurpedic] ScraperAPI status: ${res.status}, body (first 500): ${bodyText.slice(0, 500)}`)
-    if (!res.ok) throw new Error(`ScraperAPI fetch failed: ${res.status}`)
-    html = bodyText
-  } else {
-    const res = await fetch(url, { headers: BROWSER_HEADERS })
-    console.log(`[scrape:tempurpedic] HTML status: ${res.status}`)
-    if (!res.ok) throw new Error(`HTML fetch failed: ${res.status}`)
-    html = await res.text()
-  }
+async function scrapeTempurpedic(url: string, productName?: string): Promise<ScrapedVariant[]> {
+  console.log(`[scrape:tempurpedic] url="${url}" productName="${productName ?? ''}"`)
+  const res = await fetch(url, { headers: BROWSER_HEADERS })
+  console.log(`[scrape:tempurpedic] HTML status: ${res.status}`)
+  if (!res.ok) throw new Error(`HTML fetch failed: ${res.status}`)
+  const html = await res.text()
 
   const $ = load(html)
   const ldJsonScripts = $('script[type="application/ld+json"]').toArray()
@@ -1781,59 +1766,6 @@ async function scrapeTempurpedic(url: string, productName?: string, attempt = 1)
     seen.set(mappedSize, { title: mappedSize, price, compare_at_price: null })
   }
 
-  // When scraping a Hybrid product and the page only rendered one size (typically Queen),
-  // extrapolate remaining sizes by computing the hybrid premium against the regular
-  // (non-hybrid) Cloud entry for the same reference size, then applying that factor to
-  // all regular sizes present in the same JSON-LD pool.
-  if (isHybrid && seen.size < 6) {
-    console.log(`[scrape:tempurpedic] Hybrid: only ${seen.size} size(s) directly scraped — attempting premium extrapolation`)
-
-    // Pick the reference hybrid size we did get (prefer Queen)
-    const refHybridSize = seen.has('Queen') ? 'Queen' : [...seen.keys()][0]
-    const refHybridPrice = refHybridSize ? seen.get(refHybridSize)!.price : null
-
-    if (refHybridSize && refHybridPrice != null) {
-      // Find the corresponding regular (non-hybrid) Cloud entry for the same size from allProducts
-      const extractSizeAndPrice = (entry: Record<string, unknown>): { size: string; price: number } | null => {
-        const n = String(entry.name ?? '')
-        const suffix = n.includes(' - ') ? n.slice(n.lastIndexOf(' - ') + 3).trim() : ''
-        const mappedSize = TEMPURPEDIC_SIZE_MAP[suffix]
-        if (!mappedSize || TEMPURPEDIC_SIZE_SKIP.has(suffix)) return null
-        const offers = entry.offers as Record<string, unknown> | undefined
-        const raw = offers?.price
-        const price = raw != null ? parseFloat(String(raw)) : null
-        if (price == null || isNaN(price) || price === 0) return null
-        return { size: mappedSize, price }
-      }
-
-      const regularPool = allProducts.filter(p => {
-        const n = String(p.name ?? '').toLowerCase()
-        return n.includes('cloud') && !n.includes('hybrid')
-      })
-      console.log(`[scrape:tempurpedic] Regular Cloud pool for extrapolation: ${regularPool.length} entries`)
-
-      const refRegularEntry = regularPool.find(p => extractSizeAndPrice(p)?.size === refHybridSize)
-      const refRegularPrice = refRegularEntry ? extractSizeAndPrice(refRegularEntry)?.price ?? null : null
-
-      if (refRegularPrice != null && refRegularPrice > 0) {
-        const premium = refHybridPrice - refRegularPrice
-        console.log(`[scrape:tempurpedic] Hybrid premium (${refHybridSize}): $${refHybridPrice} - $${refRegularPrice} = +$${premium.toFixed(2)}`)
-
-        for (const entry of regularPool) {
-          const sp = extractSizeAndPrice(entry)
-          if (!sp || seen.has(sp.size)) continue
-          const adjusted = Math.round((sp.price + premium) * 100) / 100
-          console.log(`[scrape:tempurpedic] size="${sp.size}" price=$${adjusted} (regular $${sp.price} + premium $${premium.toFixed(2)} = $${adjusted}, not directly scraped)`)
-          seen.set(sp.size, { title: sp.size, price: adjusted, compare_at_price: null })
-        }
-      } else {
-        console.log(`[scrape:tempurpedic] Could not find regular Cloud ${refHybridSize} price — skipping extrapolation`)
-      }
-    } else {
-      console.log(`[scrape:tempurpedic] No hybrid reference size available — skipping extrapolation`)
-    }
-  }
-
   const results = [...seen.values()]
   console.log(`[scrape:tempurpedic] ✓ ${results.length} size(s) extracted`)
   return results
@@ -1847,7 +1779,7 @@ async function scrapeForBrand(brand: string, url: string, variantFilter?: string
   if (normalizedBrand === 'dreamcloud') return scrapeNectar(url, variantFilter, 'dreamcloud')
   if (normalizedBrand === 'puffy') return scrapePuffy(url, variantFilter)
   if (normalizedBrand === 'winkbeds') return scrapeWinkBeds(url, variantFilter)
-  if (normalizedBrand === 'tempurpedic') return scrapeTempurpedic(url, productName, attempt)
+  if (normalizedBrand === 'tempurpedic') return scrapeTempurpedic(url, productName)
   return scrapeGeneric(url, variantFilter)
 }
 

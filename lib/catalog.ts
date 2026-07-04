@@ -170,13 +170,25 @@ export const CATALOG: CatalogBrand[] = [
     displayName: 'Tempur-Pedic', slug: 'tempurpedic',
     products: [
       { id: 'tempur-cloud-foam', name: 'Cloud Memory Foam', brand: 'tempurpedic', url: 'https://www.tempurpedic.com/shop-mattresses/tempur-cloud-mattress/v/3882/' },
-      { id: 'tempur-cloud-hybrid', name: 'Cloud Hybrid', brand: 'tempurpedic', url: 'https://www.tempurpedic.com/shop-mattresses/tempur-cloud-mattress/v/3876/' },
       { id: 'tempur-adapt', name: 'Adapt', brand: 'tempurpedic', url: 'https://www.tempurpedic.com/shop-mattresses/adapt-collection/v/4120/' },
       { id: 'tempur-pro-adapt', name: 'Pro Adapt', brand: 'tempurpedic', url: 'https://www.tempurpedic.com/shop-mattresses/adapt-collection/v/4186/' },
       { id: 'tempur-luxe-adapt', name: 'Luxe Adapt', brand: 'tempurpedic', url: 'https://www.tempurpedic.com/shop-mattresses/adapt-collection/v/4201/' },
       { id: 'tempur-probreeze', name: 'ProBreeze', brand: 'tempurpedic', url: 'https://www.tempurpedic.com/shop-mattresses/breeze-collection/v/3934/' },
       { id: 'tempur-luxebreeze', name: 'LuxeBreeze', brand: 'tempurpedic', url: 'https://www.tempurpedic.com/shop-mattresses/breeze-collection/v/3947/' },
       { id: 'tempur-activebreeze', name: 'ActiveBreeze', brand: 'tempurpedic', url: 'https://www.tempurpedic.com/shop-mattresses/tempur-active-breeze/v/4154/' },
+    ],
+  },
+  {
+    displayName: 'WinkBed', slug: 'winkbeds',
+    products: [
+      { id: 'winkbed-luxury-firm', name: 'Luxury Firm', brand: 'winkbeds', url: 'https://www.winkbeds.com/products/the-luxury-firm-winkbed' },
+      { id: 'winkbed-softer', name: 'Softer', brand: 'winkbeds', url: 'https://www.winkbeds.com/products/the-luxury-firm-winkbed' },
+      { id: 'winkbed-firmer', name: 'Firmer', brand: 'winkbeds', url: 'https://www.winkbeds.com/products/the-luxury-firm-winkbed' },
+      { id: 'winkbed-plus', name: 'Plus', brand: 'winkbeds', url: 'https://www.winkbeds.com/products/the-plus-winkbed' },
+      { id: 'winkbed-gravitylux-soft', name: 'Gravity Lux Soft', brand: 'winkbeds', url: 'https://www.winkbeds.com/products/the-gravitylux-soft' },
+      { id: 'winkbed-gravitylux-medium', name: 'Gravity Lux Medium', brand: 'winkbeds', url: 'https://www.winkbeds.com/products/the-gravitylux-medium' },
+      { id: 'winkbed-gravitylux-firm', name: 'Gravity Lux Firm', brand: 'winkbeds', url: 'https://www.winkbeds.com/products/the-gravitylux-firm' },
+      { id: 'winkbed-ecocloud', name: 'EcoCloud', brand: 'winkbeds', url: 'https://www.winkbeds.com/products/the-ecocloud' },
     ],
   },
   {
