@@ -158,8 +158,7 @@ export const CATALOG: CatalogBrand[] = [
   {
     displayName: 'MLily', slug: 'mlily',
     products: [
-      { id: 'mlily-dream', name: 'Dream', brand: 'mlily', url: 'https://mlilyusa.com/collections/memory-foam/products/mlily-dreamm' },
-      { id: 'mlily-wellflex-ice', name: 'WellFlex ICE', brand: 'mlily', url: 'https://mlilyusa.com/collections/memory-foam/products/wellflex-ice-memory-foam-mattress' },
+{ id: 'mlily-wellflex-ice', name: 'WellFlex ICE', brand: 'mlily', url: 'https://mlilyusa.com/collections/memory-foam/products/wellflex-ice-memory-foam-mattress' },
       { id: 'mlily-wellflex', name: 'WellFlex', brand: 'mlily', url: 'https://mlilyusa.com/collections/memory-foam/products/wellflex-memory-foam-mattress' },
       { id: 'mlily-chiropro', name: 'ChiroPro Tri Zoned Hybrid', brand: 'mlily', url: 'https://mlilyusa.com/collections/hybrid-mattresses/products/chiropro-tri-zoned-hybrid-mattress' },
       { id: 'mlily-midnight-ice-hybrid', name: 'Midnight Ice Hybrid', brand: 'mlily', url: 'https://mlilyusa.com/collections/hybrid-mattresses/products/midnight-ice-hybrid-mattress' },
@@ -185,7 +184,7 @@ export const CATALOG: CatalogBrand[] = [
       { id: 'winkbed-softer', name: 'Softer', brand: 'winkbeds', url: 'https://www.winkbeds.com/products/the-luxury-firm-winkbed' },
       { id: 'winkbed-firmer', name: 'Firmer', brand: 'winkbeds', url: 'https://www.winkbeds.com/products/the-luxury-firm-winkbed' },
       { id: 'winkbed-plus', name: 'Plus', brand: 'winkbeds', url: 'https://www.winkbeds.com/products/the-plus-winkbed' },
-      { id: 'winkbed-gravitylux-soft', name: 'Gravity Lux Soft', brand: 'winkbeds', url: 'https://www.winkbeds.com/products/the-gravitylux-soft' },
+      { id: 'winkbed-gravitylux-soft', name: 'Gravity Lux Soft', brand: 'winkbeds', url: 'https://www.winkbeds.com/products/the-gravitylux-medium' },
       { id: 'winkbed-gravitylux-medium', name: 'Gravity Lux Medium', brand: 'winkbeds', url: 'https://www.winkbeds.com/products/the-gravitylux-medium' },
       { id: 'winkbed-gravitylux-firm', name: 'Gravity Lux Firm', brand: 'winkbeds', url: 'https://www.winkbeds.com/products/the-gravitylux-firm' },
       { id: 'winkbed-ecocloud', name: 'EcoCloud', brand: 'winkbeds', url: 'https://www.winkbeds.com/products/the-ecocloud' },
