@@ -710,6 +710,18 @@ async function scrapeGeneric(url: string, variantFilter?: string | null): Promis
           size = normalizeSize(String(attempt))
           if (size) { console.log(`[scrape:generic] JSON-LD size "${size}" extracted from "${attempt}"`); break }
         }
+
+        // For fromOffersArray, also try the ?size= query param on the offer URL
+        // e.g. {"url":"...?size=Queen","price":"1889.0"} — used by Leesa and similar brands
+        if (!size && fromOffersArray && v.url) {
+          const urlSizeMatch = String(v.url).match(/[?&]size=([^&#]+)/)
+          if (urlSizeMatch) {
+            const decoded = decodeURIComponent(urlSizeMatch[1].replace(/\+/g, ' '))
+            size = normalizeSize(decoded)
+            if (size) console.log(`[scrape:generic] JSON-LD size "${size}" extracted from offer URL param "${decoded}"`)
+          }
+        }
+
         if (!size || ldSeen.has(size)) continue
 
         // Price extraction differs by source
@@ -717,9 +729,28 @@ async function scrapeGeneric(url: string, variantFilter?: string | null): Promis
         let regularPrice: number | null = null
 
         if (fromOffersArray) {
-          // Each offer is a direct per-size listing: price is the current selling price
+          // Each offer is a direct per-size listing — read price from the offer itself,
+          // not from the parent product. Try direct price field first, then priceSpecification.
           salePrice = v.price != null ? parseFloat(String(v.price)) : null
-          regularPrice = v.highPrice != null ? parseFloat(String(v.highPrice)) : null
+
+          const priceSpecs = Array.isArray(v.priceSpecification)
+            ? v.priceSpecification as Array<Record<string, unknown>>
+            : []
+          if (salePrice == null) {
+            const saleSpec = priceSpecs.find(s => String(s.priceType ?? '').includes('SalePrice'))
+            const anySpec = priceSpecs[0]
+            const raw = saleSpec?.price ?? anySpec?.price ?? null
+            if (raw != null) salePrice = parseFloat(String(raw))
+          }
+
+          // Regular/list price: priceSpecification with ListPrice type, or compareAtPrice / wasPrice
+          const listSpec = priceSpecs.find(s => String(s.priceType ?? '').includes('ListPrice'))
+          if (listSpec?.price != null) {
+            regularPrice = parseFloat(String(listSpec.price))
+          } else {
+            const rawCompare = v.compareAtPrice ?? v.wasPrice ?? v.compareAtPriceValue ?? null
+            if (rawCompare != null) regularPrice = parseFloat(String(rawCompare))
+          }
         } else {
           // hasVariant: price lives in the variant's own offers sub-object
           const varOffers = v.offers as Record<string, unknown> | undefined
