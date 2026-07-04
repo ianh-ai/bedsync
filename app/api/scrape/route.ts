@@ -1113,7 +1113,13 @@ async function scrapeNectar(url: string, variantFilter?: string | null, apiBrand
   const slug = urlObj.pathname.replace(/\/+$/, '').split('/').pop() ?? ''
   console.log(`[scrape:nectar] url="${url}" apiBrand="${apiBrand}" slug="${slug}" variant_filter="${variantFilter ?? 'none'}" apiProductName="${apiProductName ?? 'none'}"`)
 
-  const API_HEADERS = { ...BROWSER_HEADERS, Accept: 'application/json' }
+  const brandOrigin = apiBrand === 'dreamcloud' ? 'https://www.dreamcloudsleep.com' : 'https://www.nectarsleep.com'
+  const API_HEADERS = {
+    ...BROWSER_HEADERS,
+    'Accept': 'application/json, */*',
+    'Referer': brandOrigin + '/',
+    'Origin': brandOrigin,
+  }
 
   const JUNK_WORDS = ['flatpack', 'sams-club', 'samsclub', 'test', 'accidental', 'coverage', 'case-pack', 'extend', 'dummy', 'gwp']
 
