@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local-only dev tools (never commit)
+app/api/test-scrape/route.ts
+app/dashboard/test/page.tsx
