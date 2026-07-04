@@ -1,122 +1,100 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { detectBrand } from '@/lib/brand-detector'
+import { CATALOG, type CatalogEntry } from '@/lib/catalog'
 
-type PriceRule = 'match_sale' | 'match_regular' | 'markup'
-
-type FormEntry = {
-  id: string
-  label: string
-  manufacturerUrl: string
-  shopifyProductId: string
-  variantFilter: string
-  priceRule: PriceRule
-  markupValue: string
-}
-
-function emptyEntry(): FormEntry {
-  return {
-    id: crypto.randomUUID(),
-    label: '',
-    manufacturerUrl: '',
-    shopifyProductId: '',
-    variantFilter: '',
-    priceRule: 'match_sale',
-    markupValue: '',
-  }
+function trackKey(brand: string, url: string): string {
+  return `${brand.toLowerCase()}::${url.replace(/\/$/, '').toLowerCase()}`
 }
 
 export default function AddProductPage() {
-  const router = useRouter()
-  const [entries, setEntries] = useState<FormEntry[]>([emptyEntry()])
-  const [submitting, setSubmitting] = useState(false)
-  const [result, setResult] = useState<{ added: number; failed: number } | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [storeId, setStoreId] = useState<string | null>(null)
+  const [trackedKeys, setTrackedKeys] = useState<Set<string>>(new Set())
+  const [activeBrand, setActiveBrand] = useState<string>('all')
+  const [checked, setChecked] = useState<Set<string>>(new Set())
+  const [shopifyIds, setShopifyIds] = useState<Record<string, string>>({})
+  const [adding, setAdding] = useState<Set<string>>(new Set())
+  const [addedLocally, setAddedLocally] = useState<Set<string>>(new Set())
 
-  function update(id: string, field: keyof FormEntry, value: string) {
-    setEntries(prev => prev.map(e => e.id === id ? { ...e, [field]: value } : e))
+  useEffect(() => {
+    async function load() {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) { setLoading(false); return }
+
+      const { data: store } = await supabase
+        .from('shopify_stores')
+        .select('id')
+        .eq('user_id', user.id)
+        .single()
+
+      setStoreId(store?.id ?? null)
+
+      if (store?.id) {
+        const { data: products } = await supabase
+          .from('tracked_products')
+          .select('brand, manufacturer_url')
+          .eq('store_id', store.id)
+
+        const keys = new Set<string>()
+        for (const p of products ?? []) {
+          keys.add(trackKey(p.brand ?? '', p.manufacturer_url ?? ''))
+        }
+        setTrackedKeys(keys)
+      }
+
+      setLoading(false)
+    }
+    load()
+  }, [])
+
+  function isTracked(entry: CatalogEntry): boolean {
+    return trackedKeys.has(trackKey(entry.brand, entry.url)) || addedLocally.has(entry.id)
   }
 
-  function addEntry() {
-    setEntries(prev => [...prev, emptyEntry()])
+  function toggleChecked(id: string) {
+    setChecked(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
   }
 
-  function removeEntry(id: string) {
-    setEntries(prev => prev.filter(e => e.id !== id))
-  }
+  async function handleAdd(entry: CatalogEntry) {
+    const shopifyId = shopifyIds[entry.id]?.trim()
+    if (!shopifyId || !storeId) return
 
-  async function handleSubmit(ev: React.FormEvent) {
-    ev.preventDefault()
-    setSubmitting(true)
+    setAdding(prev => new Set([...prev, entry.id]))
 
     const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { setSubmitting(false); return }
+    const { error } = await supabase.from('tracked_products').insert({
+      store_id: storeId,
+      shopify_product_id: shopifyId,
+      shopify_product_title: entry.name,
+      manufacturer_url: entry.url,
+      brand: entry.brand,
+      label: entry.name,
+      price_rule: 'match_sale',
+      variant_filter: entry.variantFilter ?? null,
+    })
 
-    const { data: store } = await supabase
-      .from('shopify_stores')
-      .select('id')
-      .eq('user_id', user.id)
-      .single()
-
-    if (!store) { setSubmitting(false); return }
-
-    const settled = await Promise.allSettled(
-      entries.map(e =>
-        supabase.from('tracked_products').insert({
-          store_id: store.id,
-          shopify_product_id: e.shopifyProductId.trim() || '',
-          shopify_product_title: e.label,
-          manufacturer_url: e.manufacturerUrl,
-          brand: detectBrand(e.manufacturerUrl),
-          label: e.label,
-          price_rule: e.priceRule,
-          markup_value: e.priceRule === 'markup' ? (parseFloat(e.markupValue) || 0) : null,
-          variant_filter: e.variantFilter.trim() || null,
-        }).then(({ error }) => { if (error) throw new Error(error.message) })
-      )
-    )
-
-    const added = settled.filter(r => r.status === 'fulfilled').length
-    const failed = settled.filter(r => r.status === 'rejected').length
-    setSubmitting(false)
-    setResult({ added, failed })
-
-    if (failed === 0) {
-      setTimeout(() => { router.push('/dashboard'); router.refresh() }, 1200)
+    setAdding(prev => { const n = new Set(prev); n.delete(entry.id); return n })
+    if (!error) {
+      setAddedLocally(prev => new Set([...prev, entry.id]))
+      setChecked(prev => { const n = new Set(prev); n.delete(entry.id); return n })
     }
   }
 
-  if (result) {
-    return (
-      <div className="p-8 max-w-2xl">
-        <div className={`border rounded-xl p-6 ${result.failed === 0 ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`}>
-          <p className={`text-sm font-semibold ${result.failed === 0 ? 'text-green-800' : 'text-amber-800'}`}>
-            {result.added} product{result.added !== 1 ? 's' : ''} added{result.failed > 0 ? `, ${result.failed} failed` : ''}
-          </p>
-          {result.failed === 0 && (
-            <p className="text-xs text-green-600 mt-1">Redirecting to dashboard…</p>
-          )}
-        </div>
-        {result.failed > 0 && (
-          <div className="mt-4">
-            <button
-              onClick={() => { router.push('/dashboard'); router.refresh() }}
-              className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-5 py-2.5 rounded-lg transition-colors"
-            >
-              Go to Dashboard
-            </button>
-          </div>
-        )}
-      </div>
-    )
-  }
+  const visibleBrands = activeBrand === 'all'
+    ? CATALOG
+    : CATALOG.filter(b => b.slug === activeBrand)
 
   return (
-    <div className="p-8 max-w-2xl">
+    <div className="p-8 max-w-3xl">
       <div className="mb-6">
         <Link href="/dashboard" className="text-sm text-gray-500 hover:text-gray-700 flex items-center gap-1 mb-4">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -125,152 +103,103 @@ export default function AddProductPage() {
           Back to Products
         </Link>
         <h1 className="text-xl font-semibold text-gray-900">Add Products</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Link Shopify products to manufacturer URLs for price tracking.</p>
+        <p className="text-sm text-gray-500 mt-0.5">Select products from the catalog and enter your Shopify product IDs.</p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
-        {entries.map((entry, idx) => (
-          <div key={entry.id} className="bg-white border border-gray-200 rounded-xl p-6 relative">
-            {entries.length > 1 && (
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-xs font-medium text-gray-400 uppercase tracking-wide">Product {idx + 1}</span>
-                <button
-                  type="button"
-                  onClick={() => removeEntry(entry.id)}
-                  className="text-gray-300 hover:text-red-500 transition-colors text-base leading-none"
-                  title="Remove"
-                >
-                  ✕
-                </button>
-              </div>
-            )}
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Label</label>
-                <input
-                  type="text"
-                  required
-                  value={entry.label}
-                  onChange={e => update(entry.id, 'label', e.target.value)}
-                  placeholder="e.g. Helix Midnight Luxe"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder:text-gray-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Manufacturer URL</label>
-                <input
-                  type="url"
-                  required
-                  value={entry.manufacturerUrl}
-                  onChange={e => update(entry.id, 'manufacturerUrl', e.target.value)}
-                  placeholder="e.g. https://helixsleep.com/products/helix-midnight-luxe"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder:text-gray-500"
-                />
-                {entry.manufacturerUrl && (
-                  <p className="text-xs text-gray-400 mt-1">
-                    Detected brand:{' '}
-                    <span className="font-medium text-gray-600 capitalize">
-                      {detectBrand(entry.manufacturerUrl) || 'unknown'}
-                    </span>
-                  </p>
-                )}
-                {detectBrand(entry.manufacturerUrl) === 'winkbeds' && (
-                  <p className="text-xs text-amber-600 mt-1">
-                    Tip: Use the product URL (e.g. /products/the-luxury-firm-winkbed). If you paste a shop page URL, we&apos;ll try to resolve it automatically.
-                  </p>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Shopify Product ID</label>
-                <input
-                  type="text"
-                  value={entry.shopifyProductId}
-                  onChange={e => update(entry.id, 'shopifyProductId', e.target.value)}
-                  placeholder="e.g. 8291234567890"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder:text-gray-500"
-                />
-                <p className="text-xs text-gray-400 mt-1">Find this in your Shopify admin under Products. Leave blank to set later.</p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Variant filter <span className="text-gray-400 font-normal">(optional)</span>
-                </label>
-                <input
-                  type="text"
-                  value={entry.variantFilter}
-                  onChange={e => update(entry.id, 'variantFilter', e.target.value)}
-                  placeholder="e.g. Hybrid, Plush, Medium Firm"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder:text-gray-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Price Rule</label>
-                <select
-                  value={entry.priceRule}
-                  onChange={e => update(entry.id, 'priceRule', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
-                >
-                  <option value="match_sale">Match sale price</option>
-                  <option value="match_regular">Match regular price</option>
-                  <option value="markup">Markup % above sale price</option>
-                </select>
-              </div>
-
-              {entry.priceRule === 'markup' && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Markup Percentage</label>
-                  <div className="relative">
-                    <input
-                      type="number"
-                      required
-                      min="0"
-                      step="0.1"
-                      value={entry.markupValue}
-                      onChange={e => update(entry.id, 'markupValue', e.target.value)}
-                      placeholder="e.g. 10"
-                      className="w-full px-3 py-2 pr-8 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder:text-gray-500"
-                    />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">%</span>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        ))}
-
+      <div className="flex flex-wrap gap-2 mb-6">
         <button
-          type="button"
-          onClick={addEntry}
-          className="w-full border border-dashed border-gray-300 rounded-xl py-3 text-sm text-gray-500 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+          onClick={() => setActiveBrand('all')}
+          className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
+            activeBrand === 'all'
+              ? 'bg-gray-900 text-white'
+              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          }`}
         >
-          + Add Another
+          All
         </button>
-
-        <div className="flex gap-3 pt-1">
+        {CATALOG.map(brand => (
           <button
-            type="submit"
-            disabled={submitting}
-            className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white text-sm font-medium px-5 py-2.5 rounded-lg transition-colors"
+            key={brand.slug}
+            onClick={() => setActiveBrand(brand.slug)}
+            className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
+              activeBrand === brand.slug
+                ? 'bg-gray-900 text-white'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
           >
-            {submitting
-              ? 'Adding…'
-              : entries.length === 1
-                ? 'Add Product'
-                : `Add ${entries.length} Products`}
+            {brand.displayName}
           </button>
-          <Link
-            href="/dashboard"
-            className="text-sm font-medium text-gray-600 hover:text-gray-900 px-5 py-2.5 rounded-lg border border-gray-200 hover:border-gray-300 transition-colors"
-          >
-            Cancel
-          </Link>
+        ))}
+      </div>
+
+      {loading ? (
+        <p className="text-sm text-gray-500">Loading…</p>
+      ) : !storeId ? (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-4">
+          <p className="text-sm text-amber-800">
+            Connect a Shopify store in{' '}
+            <Link href="/dashboard/settings" className="font-medium underline underline-offset-2">Settings</Link>
+            {' '}before adding products.
+          </p>
         </div>
-      </form>
+      ) : (
+        <div className="space-y-6">
+          {visibleBrands.map(brand => (
+            <div key={brand.slug} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+              <div className="px-5 py-3 border-b border-gray-100 bg-gray-50">
+                <h2 className="text-sm font-semibold text-gray-700">{brand.displayName}</h2>
+              </div>
+              <div className="divide-y divide-gray-100">
+                {brand.products.map(entry => {
+                  const tracked = isTracked(entry)
+                  const isChecked = checked.has(entry.id)
+                  const isAdding = adding.has(entry.id)
+                  const shopifyId = shopifyIds[entry.id] ?? ''
+
+                  return (
+                    <div key={entry.id} className="px-5 py-3 flex items-center gap-3 min-h-[44px]">
+                      {tracked ? (
+                        <>
+                          <span className="text-sm text-gray-400 flex-1">{entry.name}</span>
+                          <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded">Already added</span>
+                        </>
+                      ) : (
+                        <>
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => toggleChecked(entry.id)}
+                            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer shrink-0"
+                          />
+                          <span className="text-sm text-gray-900 flex-1">{entry.name}</span>
+                          {isChecked && (
+                            <>
+                              <input
+                                type="text"
+                                placeholder="Shopify Product ID"
+                                value={shopifyId}
+                                onChange={e => setShopifyIds(prev => ({ ...prev, [entry.id]: e.target.value }))}
+                                className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 w-44 placeholder:text-gray-400"
+                              />
+                              <button
+                                onClick={() => handleAdd(entry)}
+                                disabled={!shopifyId.trim() || isAdding}
+                                className="text-sm font-medium bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-3 py-1.5 rounded-lg transition-colors shrink-0"
+                              >
+                                {isAdding ? 'Adding…' : 'Add'}
+                              </button>
+                            </>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
