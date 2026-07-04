@@ -303,11 +303,8 @@ export default function ProductTable({ initialProducts }: { initialProducts: Pro
                 </td>
                 <td className="px-5 py-4 text-gray-500 text-xs">
                   {product.last_synced_at
-                    ? new Date(product.last_synced_at).toLocaleString('en-US', {
-                        month: 'short', day: 'numeric', year: 'numeric',
-                        hour: 'numeric', minute: '2-digit',
-                      })
-                    : 'Never'}
+                    ? new Date(product.last_synced_at).toISOString().slice(0, 16).replace('T', ' ') + ' UTC'
+                    : '—'}
                 </td>
                 <td className="px-5 py-4">
                   <ScrapeHealthBadge
