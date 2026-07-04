@@ -1098,6 +1098,16 @@ async function scrapeGeneric(url: string, variantFilter?: string | null): Promis
   return []
 }
 
+async function residentHomeFetch(url: string, headers: Record<string, string>): Promise<Response> {
+  const res = await fetch(url, { headers })
+  if (res.status !== 403) return res
+  console.log(`[scrape:nectar] 403 from residenthome — waiting 3s and retrying: ${url}`)
+  await new Promise(r => setTimeout(r, 3000))
+  const retry = await fetch(url, { headers })
+  if (retry.status === 403) throw new Error('Rate limited by residenthome API — try again in a few seconds.')
+  return retry
+}
+
 async function scrapeNectar(url: string, variantFilter?: string | null, apiBrand = 'nectar', apiProductName?: string): Promise<ScrapedVariant[]> {
   const urlObj = new URL(url)
   const slug = urlObj.pathname.replace(/\/+$/, '').split('/').pop() ?? ''
@@ -1119,7 +1129,7 @@ async function scrapeNectar(url: string, variantFilter?: string | null, apiBrand
     try {
       const listingUrl = `https://api.residenthome.com/products?lang=en&brand=${apiBrand}&limit=200`
       console.log(`[scrape:nectar] Listing GET ${listingUrl}`)
-      const listingRes = await fetch(listingUrl, { headers: API_HEADERS })
+      const listingRes = await residentHomeFetch(listingUrl, API_HEADERS)
       console.log(`[scrape:nectar] Listing status: ${listingRes.status}`)
 
       if (listingRes.ok) {
@@ -1176,11 +1186,13 @@ async function scrapeNectar(url: string, variantFilter?: string | null, apiBrand
 
     let json: Record<string, unknown>
     try {
-      const res = await fetch(productUrl, { headers: API_HEADERS })
+      const res = await residentHomeFetch(productUrl, API_HEADERS)
       if (!res.ok) { console.log(`[scrape:nectar] Non-OK (${res.status}) for "${name}", trying next`); continue }
       json = await res.json() as Record<string, unknown>
     } catch (err) {
-      console.log(`[scrape:nectar] Fetch error for "${name}":`, (err as Error).message)
+      const msg = (err as Error).message
+      if (msg.includes('Rate limited')) throw err
+      console.log(`[scrape:nectar] Fetch error for "${name}":`, msg)
       continue
     }
 
@@ -1243,7 +1255,7 @@ async function scrapeNectar(url: string, variantFilter?: string | null, apiBrand
     const incUrl = `https://api.residenthome.com/products?name=${encodeURIComponent(chosenName)}&lang=en&brand=${apiBrand}&include=${include}`
     console.log(`[scrape:nectar] Trying ${incUrl}`)
     try {
-      const incRes = await fetch(incUrl, { headers: API_HEADERS })
+      const incRes = await residentHomeFetch(incUrl, API_HEADERS)
       console.log(`[scrape:nectar] &include=${include}: HTTP ${incRes.status}`)
       if (incRes.ok) console.log(`[scrape:nectar] &include=${include} body (first 3000):`, (await incRes.text()).slice(0, 3000))
     } catch (e) { console.log(`[scrape:nectar] &include=${include} error:`, (e as Error).message) }
