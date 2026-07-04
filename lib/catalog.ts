@@ -126,7 +126,7 @@ export const CATALOG: CatalogBrand[] = [
   {
     displayName: 'Dreamcloud', slug: 'dreamcloud',
     products: [
-      { id: 'dreamcloud-classic-hybrid', name: 'Classic Hybrid', brand: 'dreamcloud', url: 'https://www.dreamcloudsleep.com/mattress', apiProductName: 'dreamcloud-40-classic-hybrid-mattress' },
+      { id: 'dreamcloud-classic-hybrid', name: 'Classic Hybrid', brand: 'dreamcloud', url: 'https://www.dreamcloudsleep.com/mattress', apiProductName: 'the-dreamcloud-tight-top-mattress' },
       { id: 'dreamcloud-classic-foam', name: 'Classic Memory Foam', brand: 'dreamcloud', url: 'https://www.dreamcloudsleep.com/mattresses/memory-foam-mattress' },
       { id: 'dreamcloud-premier-hybrid', name: 'Premier Hybrid', brand: 'dreamcloud', url: 'https://www.dreamcloudsleep.com/mattresses/premier-hybrid-mattress' },
       { id: 'dreamcloud-premier-foam', name: 'Premier Memory Foam', brand: 'dreamcloud', url: 'https://www.dreamcloudsleep.com/mattresses/premier-memory-foam-mattress' },
