@@ -1,5 +1,6 @@
 import { load } from 'cheerio'
 import { createClient } from '@/lib/supabase/server'
+import { CATALOG } from '@/lib/catalog'
 
 export type ScrapedVariant = {
   title: string
@@ -1072,10 +1073,10 @@ async function scrapeGeneric(url: string, variantFilter?: string | null): Promis
   return []
 }
 
-async function scrapeNectar(url: string, variantFilter?: string | null, apiBrand = 'nectar'): Promise<ScrapedVariant[]> {
+async function scrapeNectar(url: string, variantFilter?: string | null, apiBrand = 'nectar', apiProductName?: string): Promise<ScrapedVariant[]> {
   const urlObj = new URL(url)
   const slug = urlObj.pathname.replace(/\/+$/, '').split('/').pop() ?? ''
-  console.log(`[scrape:nectar] url="${url}" apiBrand="${apiBrand}" slug="${slug}" variant_filter="${variantFilter ?? 'none'}"`)
+  console.log(`[scrape:nectar] url="${url}" apiBrand="${apiBrand}" slug="${slug}" variant_filter="${variantFilter ?? 'none'}" apiProductName="${apiProductName ?? 'none'}"`)
 
   const API_HEADERS = { ...BROWSER_HEADERS, Accept: 'application/json' }
 
@@ -1084,48 +1085,55 @@ async function scrapeNectar(url: string, variantFilter?: string | null, apiBrand
   // ── Step 1: fetch product listing, filter junk, score-match best name ────────
   // Scored names in descending order so we can try next-best on validation failure
   const scoredNames: Array<{ name: string; score: number }> = []
-  try {
-    const listingUrl = `https://api.residenthome.com/products?lang=en&brand=${apiBrand}&limit=200`
-    console.log(`[scrape:nectar] Listing GET ${listingUrl}`)
-    const listingRes = await fetch(listingUrl, { headers: API_HEADERS })
-    console.log(`[scrape:nectar] Listing status: ${listingRes.status}`)
 
-    if (listingRes.ok) {
-      const listingJson = await listingRes.json() as Record<string, unknown>
-      const listResult = listingJson.result as Record<string, unknown> | undefined
-      const data: unknown[] =
-        (Array.isArray(listResult?.data) ? listResult!.data as unknown[] : null) ??
-        (Array.isArray(listingJson.data) ? listingJson.data as unknown[] : null) ??
-        (Array.isArray(listingJson.products) ? listingJson.products as unknown[] : null) ??
-        (Array.isArray(listingJson.results) ? listingJson.results as unknown[] : null) ??
-        (Array.isArray(listingJson) ? listingJson as unknown[] : [])
+  if (apiProductName) {
+    // Skip listing fetch and scoring — use the exact API product name directly
+    console.log(`[scrape:nectar] Using apiProductName="${apiProductName}" — skipping listing/scoring`)
+    scoredNames.push({ name: apiProductName, score: Infinity })
+  } else {
+    try {
+      const listingUrl = `https://api.residenthome.com/products?lang=en&brand=${apiBrand}&limit=200`
+      console.log(`[scrape:nectar] Listing GET ${listingUrl}`)
+      const listingRes = await fetch(listingUrl, { headers: API_HEADERS })
+      console.log(`[scrape:nectar] Listing status: ${listingRes.status}`)
 
-      const allNames = data
-        .map(p => String((p as Record<string, unknown>).name ?? (p as Record<string, unknown>).slug ?? ''))
-        .filter(Boolean)
+      if (listingRes.ok) {
+        const listingJson = await listingRes.json() as Record<string, unknown>
+        const listResult = listingJson.result as Record<string, unknown> | undefined
+        const data: unknown[] =
+          (Array.isArray(listResult?.data) ? listResult!.data as unknown[] : null) ??
+          (Array.isArray(listingJson.data) ? listingJson.data as unknown[] : null) ??
+          (Array.isArray(listingJson.products) ? listingJson.products as unknown[] : null) ??
+          (Array.isArray(listingJson.results) ? listingJson.results as unknown[] : null) ??
+          (Array.isArray(listingJson) ? listingJson as unknown[] : [])
 
-      // Remove internal/non-retail SKUs
-      const retailNames = allNames.filter(name => {
-        const n = name.toLowerCase()
-        return !JUNK_WORDS.some(junk => n.includes(junk))
-      })
-      console.log('[scrape:nectar] Retail products (after junk filter):', JSON.stringify(retailNames))
+        const allNames = data
+          .map(p => String((p as Record<string, unknown>).name ?? (p as Record<string, unknown>).slug ?? ''))
+          .filter(Boolean)
 
-      // Score each name: count matching URL slug parts + variantFilter words
-      const keywords = [
-        ...slug.split('-').filter(w => w.length > 2),
-        ...(variantFilter ? variantFilter.toLowerCase().split(/\s+/) : []),
-      ]
-      for (const name of retailNames) {
-        const nameLower = name.toLowerCase()
-        const score = keywords.filter(kw => nameLower.includes(kw)).length
-        scoredNames.push({ name, score })
+        // Remove internal/non-retail SKUs
+        const retailNames = allNames.filter(name => {
+          const n = name.toLowerCase()
+          return !JUNK_WORDS.some(junk => n.includes(junk))
+        })
+        console.log('[scrape:nectar] Retail products (after junk filter):', JSON.stringify(retailNames))
+
+        // Score each name: count matching URL slug parts + variantFilter words
+        const keywords = [
+          ...slug.split('-').filter(w => w.length > 2),
+          ...(variantFilter ? variantFilter.toLowerCase().split(/\s+/) : []),
+        ]
+        for (const name of retailNames) {
+          const nameLower = name.toLowerCase()
+          const score = keywords.filter(kw => nameLower.includes(kw)).length
+          scoredNames.push({ name, score })
+        }
+        scoredNames.sort((a, b) => b.score - a.score)
+        console.log(`[scrape:nectar] Top matches:`, JSON.stringify(scoredNames.slice(0, 5)))
       }
-      scoredNames.sort((a, b) => b.score - a.score)
-      console.log(`[scrape:nectar] Top matches:`, JSON.stringify(scoredNames.slice(0, 5)))
+    } catch (err) {
+      console.log('[scrape:nectar] Listing error:', (err as Error).message)
     }
-  } catch (err) {
-    console.log('[scrape:nectar] Listing error:', (err as Error).message)
   }
 
   if (scoredNames.length === 0) {
@@ -1771,12 +1779,12 @@ async function scrapeTempurpedic(url: string, productName?: string): Promise<Scr
   return results
 }
 
-export async function scrapeForBrand(brand: string, url: string, variantFilter?: string | null, attempt = 1, productName?: string): Promise<ScrapedVariant[]> {
+export async function scrapeForBrand(brand: string, url: string, variantFilter?: string | null, attempt = 1, productName?: string, apiProductName?: string): Promise<ScrapedVariant[]> {
   const normalizedBrand = brand.toLowerCase()
   if (normalizedBrand === 'helix') return scrapeHelix(url, attempt)
   if (normalizedBrand === 'birch') return scrapeHelix(url, attempt)
-  if (normalizedBrand === 'nectar') return scrapeNectar(url, variantFilter)
-  if (normalizedBrand === 'dreamcloud') return scrapeNectar(url, variantFilter, 'dreamcloud')
+  if (normalizedBrand === 'nectar') return scrapeNectar(url, variantFilter, 'nectar', apiProductName)
+  if (normalizedBrand === 'dreamcloud') return scrapeNectar(url, variantFilter, 'dreamcloud', apiProductName)
   if (normalizedBrand === 'puffy') return scrapePuffy(url, variantFilter)
   if (normalizedBrand === 'winkbeds') return scrapeWinkBeds(url, variantFilter)
   if (normalizedBrand === 'tempurpedic') return scrapeTempurpedic(url, productName)
@@ -1813,11 +1821,15 @@ export async function runScrape(tracked_product_id: string, supabase: SupabaseCl
 
     const now = new Date().toISOString()
 
+    const catalogBrand = CATALOG.find(b => b.slug === brand.toLowerCase())
+    const catalogEntry = catalogBrand?.products.find(e => e.name.toLowerCase() === (product.label ?? '').toLowerCase())
+    const apiProductName = catalogEntry?.apiProductName
+
     let scraped: ScrapedVariant[] | null = null
     let lastScrapeError: string | null = null
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
-        scraped = await scrapeForBrand(brand, product.manufacturer_url, variantFilter, attempt, product.label ?? undefined)
+        scraped = await scrapeForBrand(brand, product.manufacturer_url, variantFilter, attempt, product.label ?? undefined, apiProductName)
         break
       } catch (err) {
         lastScrapeError = err instanceof Error ? err.message : String(err)
