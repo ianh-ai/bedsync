@@ -170,7 +170,7 @@ export default async function HistoryPage({ params }: { params: Promise<{ id: st
         <div className="bg-white border border-gray-200 rounded-xl p-6">
           {chartData.length < 2 ? (
             <p className="text-sm text-gray-500 text-center py-8">
-              Not enough data yet. Scrape at least twice to see price trends.
+              Not enough data yet. Sync at least twice to see price trends.
             </p>
           ) : (
             <PriceChart data={chartData} sizes={sizes} />

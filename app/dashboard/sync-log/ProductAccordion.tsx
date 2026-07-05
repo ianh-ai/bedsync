@@ -28,7 +28,7 @@ export default function ProductAccordion({ products }: { products: ProductGroup[
     return (
       <div className="bg-white border border-gray-200 rounded-xl p-12 text-center">
         <p className="text-sm text-gray-500">
-          No sync history yet. Run a scrape from the Products page to get started.
+          No sync history yet. Run a sync from the Products page to get started.
         </p>
       </div>
     )
@@ -66,7 +66,7 @@ export default function ProductAccordion({ products }: { products: ProductGroup[
               <span className="font-medium text-gray-900 flex-1 truncate">{product.name}</span>
 
               <span className="text-xs text-gray-500 shrink-0">
-                Last scraped {new Date(product.lastScrapedAt).toLocaleString()}
+                Last checked {new Date(product.lastScrapedAt).toLocaleString()}
               </span>
 
               <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded-full shrink-0">
@@ -82,7 +82,7 @@ export default function ProductAccordion({ products }: { products: ProductGroup[
                       <th className="text-left py-2 font-medium">Size</th>
                       <th className="text-left py-2 font-medium">Regular</th>
                       <th className="text-left py-2 font-medium">Sale</th>
-                      <th className="text-left py-2 font-medium">Last Scraped</th>
+                      <th className="text-left py-2 font-medium">Last Checked</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">

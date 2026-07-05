@@ -13,7 +13,7 @@ export default function SyncButton({ productId }: { productId: string }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tracked_product_id: productId }),
       })
-      if (!scrapeRes.ok) throw new Error('Scrape failed')
+      if (!scrapeRes.ok) throw new Error('Price check failed')
 
       setStatus('syncing')
       const syncRes = await fetch('/api/sync', {
@@ -45,7 +45,7 @@ export default function SyncButton({ productId }: { productId: string }) {
           : 'bg-blue-50 hover:bg-blue-100 text-blue-700 disabled:opacity-60'
       }`}
     >
-      {status === 'scraping' ? 'Scraping…' :
+      {status === 'scraping' ? 'Checking…' :
        status === 'syncing' ? 'Syncing…' :
        status === 'done' ? 'Synced!' :
        status === 'error' ? 'Failed' :
