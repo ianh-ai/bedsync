@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomBytes } from 'node:crypto'
+import { createClient } from '@/lib/supabase/server'
 
 const SHOP_RE = /^[a-zA-Z0-9][a-zA-Z0-9-]*\.myshopify\.com$/
 
@@ -11,6 +12,15 @@ export async function GET(request: NextRequest) {
       { error: 'Missing or invalid shop parameter. Must be a *.myshopify.com domain.' },
       { status: 400 }
     )
+  }
+
+  // Require a logged-in user before starting OAuth so we can associate the token.
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    const loginUrl = new URL('/login', request.url)
+    loginUrl.searchParams.set('redirect', `/api/shopify/install?shop=${shop}`)
+    return NextResponse.redirect(loginUrl)
   }
 
   const apiKey = process.env.SHOPIFY_API_KEY

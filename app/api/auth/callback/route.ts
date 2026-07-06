@@ -62,17 +62,29 @@ export async function GET(request: NextRequest) {
 
   console.log(`[shopify/callback] token exchange response: ${tokenRes.status}`)
 
-  const tokenBody = await tokenRes.json()
-  console.log(`[shopify/callback] token exchange body:`, JSON.stringify(tokenBody))
+  const tokenBody = await tokenRes.json() as {
+    access_token?: string
+    scope?: string
+    token_type?: string
+    expires_in?: number
+  }
 
   if (!tokenRes.ok) {
+    console.error(`[shopify/callback] token exchange failed: ${tokenRes.status}`, JSON.stringify(tokenBody))
     return Response.json(
       { error: `Token exchange failed: ${tokenRes.status}`, detail: tokenBody },
       { status: 502 }
     )
   }
 
-  const { access_token } = tokenBody as { access_token?: string }
+  const { access_token, scope, token_type, expires_in } = tokenBody
+  console.log('[oauth:callback]', JSON.stringify({
+    scope,
+    token_type,
+    expires_in: expires_in ?? 'none',
+    prefix: access_token?.slice(0, 12),
+  }))
+
   if (!access_token) {
     throw new Error(
       `access_token missing from Shopify response (status ${tokenRes.status}): ${JSON.stringify(tokenBody)}`
@@ -104,7 +116,7 @@ export async function GET(request: NextRequest) {
   }
 
   // --- Clear nonce cookie and redirect ---
-  const successUrl = new URL('/dashboard/settings?connected=true', request.url)
+  const successUrl = new URL('/dashboard/products', request.url)
   const response = NextResponse.redirect(successUrl)
   response.cookies.delete('shopify_oauth_nonce')
 
