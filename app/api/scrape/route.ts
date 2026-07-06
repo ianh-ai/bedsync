@@ -59,7 +59,7 @@ function tryParseVariants(json: unknown): ScrapedVariant[] | null {
   return results.length > 0 ? results : null
 }
 
-async function scrapeHelix(url: string, attempt = 1): Promise<ScrapedVariant[]> {
+async function scrapeHelix(url: string): Promise<ScrapedVariant[]> {
   // --- Approach 0: Shopify product.json endpoint ---
   const helixOrigin = new URL(url).origin
   const handleMatch = url.match(/\/products\/([^/?#]+)/)
@@ -119,23 +119,13 @@ async function scrapeHelix(url: string, attempt = 1): Promise<ScrapedVariant[]> 
   console.log(`[scrape:helix] Fetching HTML: ${targetUrl}`)
   let res: Response
   if (process.env.SCRAPER_API_KEY) {
-    const render = attempt > 1 ? 'true' : 'false'
-    const proxyUrl = `http://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&url=${encodeURIComponent(targetUrl)}&render=${render}&premium=true`
+    const proxyUrl = `http://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&url=${encodeURIComponent(targetUrl)}&render=true&premium=true`
     console.log(`[scrape:helix] ScraperAPI target URL: ${targetUrl}`)
-    console.log(`[scrape:helix] ScraperAPI proxy URL (key redacted): http://api.scraperapi.com?api_key=REDACTED&url=${encodeURIComponent(targetUrl)}&render=${render}&premium=true`)
-    let rawRes = await fetch(proxyUrl)
-    let bodyText = await rawRes.text()
+    console.log(`[scrape:helix] ScraperAPI proxy URL (key redacted): http://api.scraperapi.com?api_key=REDACTED&url=${encodeURIComponent(targetUrl)}&render=true&premium=true`)
+    const rawRes = await fetch(proxyUrl)
+    const bodyText = await rawRes.text()
     console.log(`[scrape:helix] ScraperAPI status: ${rawRes.status}`)
     console.log(`[scrape:helix] ScraperAPI body (first 500 chars): ${bodyText.slice(0, 500)}`)
-    // On 500 with static mode, retry immediately with JS rendering before letting runScrape retry
-    if (rawRes.status === 500 && render === 'false') {
-      console.log(`[scrape:helix] ScraperAPI 500 on render=false — retrying with render=true`)
-      const retryUrl = `http://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&url=${encodeURIComponent(targetUrl)}&render=true&premium=true`
-      rawRes = await fetch(retryUrl)
-      bodyText = await rawRes.text()
-      console.log(`[scrape:helix] ScraperAPI retry status: ${rawRes.status}`)
-      console.log(`[scrape:helix] ScraperAPI retry body (first 500 chars): ${bodyText.slice(0, 500)}`)
-    }
     if (!rawRes.ok) throw new Error(`ScraperAPI fetch failed: ${rawRes.status}`)
     // Re-wrap the already-consumed body so the rest of the function can call res.text() / res.ok normally
     res = new Response(bodyText, { status: rawRes.status, headers: rawRes.headers })
@@ -1925,10 +1915,10 @@ async function scrapeTempurpedic(url: string, productName?: string): Promise<Scr
   return results
 }
 
-export async function scrapeForBrand(brand: string, url: string, variantFilter?: string | null, attempt = 1, productName?: string, apiProductName?: string): Promise<ScrapedVariant[]> {
+export async function scrapeForBrand(brand: string, url: string, variantFilter?: string | null, productName?: string, apiProductName?: string): Promise<ScrapedVariant[]> {
   const normalizedBrand = brand.toLowerCase()
-  if (normalizedBrand === 'helix') return scrapeHelix(url, attempt)
-  if (normalizedBrand === 'birch') return scrapeHelix(url, attempt)
+  if (normalizedBrand === 'helix') return scrapeHelix(url)
+  if (normalizedBrand === 'birch') return scrapeHelix(url)
   if (normalizedBrand === 'nectar') return scrapeNectar(url, variantFilter, 'nectar', apiProductName)
   if (normalizedBrand === 'dreamcloud') return scrapeNectar(url, variantFilter, 'dreamcloud', apiProductName)
   if (normalizedBrand === 'puffy') return scrapePuffy(url, variantFilter)
@@ -1975,7 +1965,7 @@ export async function runScrape(tracked_product_id: string, supabase: SupabaseCl
     let lastScrapeError: string | null = null
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
-        scraped = await scrapeForBrand(brand, product.manufacturer_url, variantFilter, attempt, product.label ?? undefined, apiProductName)
+        scraped = await scrapeForBrand(brand, product.manufacturer_url, variantFilter, product.label ?? undefined, apiProductName)
         break
       } catch (err) {
         lastScrapeError = err instanceof Error ? err.message : String(err)
