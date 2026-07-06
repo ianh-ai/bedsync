@@ -268,6 +268,99 @@ async function scrapeHelix(url: string, attempt = 1): Promise<ScrapedVariant[]> 
     break
   }
 
+  // --- Approach 2: Embedded variants JSON with discounted_price field ---
+  // Helix embeds a full variants array in the page. Each element contains:
+  //   option_1_label: "Twin" / "King" / "CA King" etc.
+  //   price_formatted: "$1,732"  ← MSRP/regular price
+  //   discounted_price: 129900   ← sale price in cents
+  // Filter to option_2 containing "tencel" to get one row per size.
+  console.log(`[scrape:helix] Approach 2: embedded discounted_price variants scan`)
+  {
+    const discountedIdx = html.indexOf('"discounted_price":')
+    if (discountedIdx !== -1) {
+      // Walk backward to find the '[' that opens the enclosing array.
+      let depth = 0
+      let arrayStart = -1
+      for (let i = discountedIdx; i >= 0; i--) {
+        const ch = html[i]
+        if (ch === '}' || ch === ']') {
+          depth++
+        } else if (ch === '{' || ch === '[') {
+          if (depth > 0) {
+            depth--
+          } else if (ch === '[') {
+            arrayStart = i
+            break
+          }
+          // ch === '{' at depth 0 means we crossed the current element's open brace — keep scanning
+        }
+      }
+
+      if (arrayStart !== -1) {
+        // Walk forward to find the matching ']', tracking string escapes.
+        let d2 = 1
+        let arrayEnd = -1
+        let inStr = false
+        let esc = false
+        for (let i = arrayStart + 1; i < html.length; i++) {
+          const ch = html[i]
+          if (esc) { esc = false; continue }
+          if (ch === '\\' && inStr) { esc = true; continue }
+          if (ch === '"') { inStr = !inStr; continue }
+          if (inStr) continue
+          if (ch === '[' || ch === '{') d2++
+          else if (ch === ']' || ch === '}') {
+            if (--d2 === 0) { arrayEnd = i; break }
+          }
+        }
+
+        if (arrayEnd !== -1) {
+          try {
+            const arr = JSON.parse(html.slice(arrayStart, arrayEnd + 1)) as Array<Record<string, unknown>>
+            const helixSizeMap = new Map<string, ScrapedVariant>()
+
+            for (const v of arr) {
+              // Use TENCEL cover as the base option (one row per size).
+              const option2 = String(v.option_2 ?? '').toLowerCase()
+              if (!option2.includes('tencel')) continue
+
+              const label = String(v.option_1_label ?? v.option_1 ?? '')
+              const size = normalizeSize(label)
+              if (!size || helixSizeMap.has(size)) continue
+
+              const salePrice = typeof v.discounted_price === 'number' ? v.discounted_price / 100 : null
+              if (!salePrice) continue
+
+              const priceStr = String(v.price_formatted ?? '').replace(/[$,]/g, '')
+              const regularPrice = parseFloat(priceStr)
+
+              helixSizeMap.set(size, {
+                title: size,
+                price: salePrice,
+                compare_at_price: !isNaN(regularPrice) && regularPrice > salePrice ? regularPrice : null,
+              })
+            }
+
+            if (helixSizeMap.size >= 2) {
+              const variants = [...helixSizeMap.values()]
+              console.log(`[scrape:helix] ✓ Approach 2 (embedded variants JSON): ${variants.length} sizes extracted`)
+              return variants
+            }
+            console.log(`[scrape:helix] Approach 2: only ${helixSizeMap.size} size(s) — falling through to Approach 3`)
+          } catch (parseErr) {
+            console.log(`[scrape:helix] Approach 2: JSON parse failed:`, parseErr instanceof Error ? parseErr.message : parseErr)
+          }
+        } else {
+          console.log(`[scrape:helix] Approach 2: could not find closing ']'`)
+        }
+      } else {
+        console.log(`[scrape:helix] Approach 2: could not find opening '[' for variants array`)
+      }
+    } else {
+      console.log(`[scrape:helix] Approach 2: "discounted_price" not found in HTML`)
+    }
+  }
+
   // --- Approach 3: dollar amounts near size keywords ---
   // Prices appear as sequential (regular, sale) pairs in the HTML: index 0+1, 2+3, etc.
   // More specific names first to prevent substring false-positives.
