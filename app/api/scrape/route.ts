@@ -120,9 +120,9 @@ async function scrapeHelix(url: string, attempt = 1): Promise<ScrapedVariant[]> 
   let res: Response
   if (process.env.SCRAPER_API_KEY) {
     const render = attempt > 1 ? 'true' : 'false'
-    const proxyUrl = `http://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&url=${encodeURIComponent(targetUrl)}&render=${render}`
+    const proxyUrl = `http://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&url=${encodeURIComponent(targetUrl)}&render=${render}&premium=true`
     console.log(`[scrape:helix] ScraperAPI target URL: ${targetUrl}`)
-    console.log(`[scrape:helix] ScraperAPI proxy URL (key redacted): http://api.scraperapi.com?api_key=REDACTED&url=${encodeURIComponent(targetUrl)}&render=${render}`)
+    console.log(`[scrape:helix] ScraperAPI proxy URL (key redacted): http://api.scraperapi.com?api_key=REDACTED&url=${encodeURIComponent(targetUrl)}&render=${render}&premium=true`)
     let rawRes = await fetch(proxyUrl)
     let bodyText = await rawRes.text()
     console.log(`[scrape:helix] ScraperAPI status: ${rawRes.status}`)
@@ -130,7 +130,7 @@ async function scrapeHelix(url: string, attempt = 1): Promise<ScrapedVariant[]> 
     // On 500 with static mode, retry immediately with JS rendering before letting runScrape retry
     if (rawRes.status === 500 && render === 'false') {
       console.log(`[scrape:helix] ScraperAPI 500 on render=false — retrying with render=true`)
-      const retryUrl = `http://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&url=${encodeURIComponent(targetUrl)}&render=true`
+      const retryUrl = `http://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&url=${encodeURIComponent(targetUrl)}&render=true&premium=true`
       rawRes = await fetch(retryUrl)
       bodyText = await rawRes.text()
       console.log(`[scrape:helix] ScraperAPI retry status: ${rawRes.status}`)
