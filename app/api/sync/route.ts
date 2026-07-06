@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { syncWooCommerce } from '@/lib/sync-woocommerce'
+import { rotateShopifyToken } from '@/lib/shopify-token-rotation'
 
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>
 
@@ -100,11 +101,11 @@ export async function runSync(
     }
 
     const shopDomain = store.shop_domain
-    const accessToken = store.access_token
+    let accessToken = store.access_token as string
 
     const variantsUrl = `https://${shopDomain}/admin/api/2024-01/products/${product.shopify_product_id}/variants.json`
     console.log(`[sync] GET ${variantsUrl}`)
-    const variantsRes = await fetch(variantsUrl, {
+    let variantsRes = await fetch(variantsUrl, {
       headers: {
         'X-Shopify-Access-Token': accessToken,
         'Content-Type': 'application/json',
@@ -116,11 +117,28 @@ export async function runSync(
       const body = await variantsRes.text()
       console.error(`[sync] GET ${variantsUrl} failed: ${variantsRes.status} — ${body}`)
       if (variantsRes.status === 403 && body.toLowerCase().includes('non-expiring')) {
-        return Response.json({
-          error: 'Your Shopify connection needs to be refreshed — please reconnect your store in Settings.',
-        }, { status: 403 })
+        console.log(`[sync] attempting token rotation for ${shopDomain}`)
+        const newToken = await rotateShopifyToken(shopDomain)
+        if (newToken) {
+          accessToken = newToken
+          console.log(`[sync] token rotated, retrying GET variants`)
+          variantsRes = await fetch(variantsUrl, {
+            headers: { 'X-Shopify-Access-Token': newToken, 'Content-Type': 'application/json' },
+          })
+          console.log(`[sync] variants retry response: ${variantsRes.status}`)
+          if (!variantsRes.ok) {
+            const retryBody = await variantsRes.text()
+            console.error(`[sync] GET ${variantsUrl} retry failed: ${variantsRes.status} — ${retryBody}`)
+            return Response.json({ error: `Shopify API error: ${variantsRes.status}` }, { status: 502 })
+          }
+        } else {
+          return Response.json({
+            error: 'Shopify token rotation failed — please reconnect your store in Settings.',
+          }, { status: 403 })
+        }
+      } else {
+        return Response.json({ error: `Shopify API error: ${variantsRes.status}` }, { status: 502 })
       }
-      return Response.json({ error: `Shopify API error: ${variantsRes.status}` }, { status: 502 })
     }
 
     const variantsData = await variantsRes.json()
@@ -213,7 +231,7 @@ export async function runSync(
         `[sync] PUT ${variantUrl} — "${variant.title}" size="${matchedSize}" old_price=${variant.price} → new_price=${newPrice.toFixed(2)} compare_at=${newCompareAt?.toFixed(2) ?? 'null'}`
       )
 
-      const variantRes = await fetch(variantUrl, {
+      let variantRes = await fetch(variantUrl, {
         method: 'PUT',
         headers: {
           'X-Shopify-Access-Token': accessToken,
@@ -232,14 +250,41 @@ export async function runSync(
         const text = await variantRes.text()
         console.error(`[sync] PUT ${variantUrl} failed: ${variantRes.status} — ${text}`)
         if (variantRes.status === 403 && text.toLowerCase().includes('non-expiring')) {
-          return Response.json({
-            error: 'Your Shopify connection needs to be refreshed — please reconnect your store in Settings.',
-          }, { status: 403 })
+          console.log(`[sync] attempting token rotation for ${shopDomain}`)
+          const newToken = await rotateShopifyToken(shopDomain)
+          if (newToken) {
+            accessToken = newToken
+            console.log(`[sync] token rotated, retrying PUT variant ${variant.id}`)
+            variantRes = await fetch(variantUrl, {
+              method: 'PUT',
+              headers: { 'X-Shopify-Access-Token': newToken, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                variant: {
+                  price: newPrice.toFixed(2),
+                  compare_at_price: newCompareAt ? newCompareAt.toFixed(2) : null,
+                },
+              }),
+            })
+            console.log(`[sync] PUT retry response: ${variantRes.status}`)
+            if (!variantRes.ok) {
+              const retryText = await variantRes.text()
+              console.error(`[sync] PUT ${variantUrl} retry failed: ${variantRes.status} — ${retryText}`)
+              return Response.json(
+                { error: `Shopify variant update failed: ${variantRes.status}`, detail: retryText },
+                { status: 502 }
+              )
+            }
+          } else {
+            return Response.json({
+              error: 'Shopify token rotation failed — please reconnect your store in Settings.',
+            }, { status: 403 })
+          }
+        } else {
+          return Response.json(
+            { error: `Shopify variant update failed: ${variantRes.status}`, detail: text },
+            { status: 502 }
+          )
         }
-        return Response.json(
-          { error: `Shopify variant update failed: ${variantRes.status}`, detail: text },
-          { status: 502 }
-        )
       }
 
       updatedCount++

@@ -30,8 +30,6 @@ export default async function ProductsPage() {
     .is('deleted_at', null)
     .order('created_at', { ascending: false })
 
-  console.log('products query result:', products, productsError)
-
   const allProducts = products ?? []
   const pausedProducts = allProducts
     .filter((p: { sync_paused?: boolean }) => p.sync_paused)
