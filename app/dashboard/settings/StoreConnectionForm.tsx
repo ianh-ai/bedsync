@@ -43,7 +43,7 @@ function ConnectedView({
   async function handleUnlink() {
     setShowModal(false)
     setUnlinking(true)
-    await fetch('/api/shopify/store?removeProducts=true', { method: 'DELETE' })
+    await fetch('/api/shopify/store', { method: 'DELETE' })
     router.refresh()
   }
 
@@ -68,9 +68,9 @@ function ConnectedView({
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowModal(false)}>
           <div className="bg-white rounded-xl border border-gray-200 shadow-lg p-6 max-w-sm w-full mx-4" onClick={e => e.stopPropagation()}>
-            <h3 className="text-sm font-semibold text-gray-900 mb-2">Disconnect {platformLabel} store?</h3>
+            <h3 className="text-sm font-semibold text-gray-900 mb-2">Disconnect {platformLabel}?</h3>
             <p className="text-xs text-gray-600 mb-5">
-              This will disconnect your store and permanently delete all tracked products and price history. This cannot be undone.
+              Your tracked products will remain but prices will no longer sync to your store.
             </p>
             <div className="flex gap-3">
               <button
@@ -78,7 +78,7 @@ function ConnectedView({
                 onClick={handleUnlink}
                 className="flex-1 bg-red-600 hover:bg-red-700 text-white text-sm font-medium py-2 px-4 rounded-lg transition-colors"
               >
-                Disconnect &amp; Delete
+                Disconnect
               </button>
               <button
                 type="button"
