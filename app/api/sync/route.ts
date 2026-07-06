@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { syncWooCommerce } from '@/lib/sync-woocommerce'
 import { rotateShopifyToken } from '@/lib/shopify-token-rotation'
 import { getValidShopifyToken } from '@/lib/shopify-token'
@@ -23,9 +24,11 @@ export async function runSync(
     type StoreRecord = { shop_domain: string; access_token: string; platform?: string | null; wc_consumer_key?: string | null; wc_consumer_secret?: string | null }
     let store: StoreRecord | null = storeOverride ?? null
     let syncUserId: string | null = storeOverride?.userId ?? null
+    let authUser: { id: string } | null = null
 
     if (!store) {
       const { data: { user } } = await supabase.auth.getUser()
+      authUser = user
       console.log(`[sync] user: ${user?.id ?? 'none'}`)
       if (!user) {
         return Response.json({ error: 'Unauthorized' }, { status: 401 })
@@ -47,10 +50,12 @@ export async function runSync(
       console.log(`[sync] store override: ${store.shop_domain}`)
     }
 
-    const { data: product, error: productError } = await supabase
+    const productUserId = authUser?.id ?? storeOverride?.userId ?? ''
+    const { data: product, error: productError } = await createAdminClient()
       .from('tracked_products')
       .select('*')
       .eq('id', tracked_product_id)
+      .eq('user_id', productUserId)
       .single()
     console.log(`[sync] product: ${product?.label ?? product?.shopify_product_title ?? 'none'} id=${product?.shopify_product_id ?? 'none'} (error: ${productError?.message ?? 'none'})`)
 
@@ -61,6 +66,11 @@ export async function runSync(
     if ((product as { sync_paused?: boolean }).sync_paused) {
       return Response.json({ skipped: true, reason: 'Brand sync paused — over plan limit' })
     }
+
+    // Diagnostic: log the exact key and a sample unfiltered row to verify schema/values
+    console.log(`[sync] prices query key: tracked_product_id="${tracked_product_id}"`)
+    const { data: pricesSample } = await createAdminClient().from('prices').select('*').limit(1)
+    console.log(`[sync] prices table sample (admin, unfiltered):`, JSON.stringify(pricesSample))
 
     // Fetch all price rows for this product ordered newest-first, then deduplicate
     // in JS to get the most recent row per size (equivalent to DISTINCT ON (size)).
