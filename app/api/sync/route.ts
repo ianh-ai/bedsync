@@ -114,6 +114,11 @@ export async function runSync(
     if (!variantsRes.ok) {
       const body = await variantsRes.text()
       console.log(`[sync] variants error body: ${body}`)
+      if (variantsRes.status === 403 && body.toLowerCase().includes('non-expiring')) {
+        return Response.json({
+          error: 'Your Shopify connection needs to be refreshed — please reconnect your store in Settings.',
+        }, { status: 403 })
+      }
       return Response.json({ error: `Shopify API error: ${variantsRes.status}` }, { status: 502 })
     }
 
@@ -225,6 +230,11 @@ export async function runSync(
       if (!variantRes.ok) {
         const text = await variantRes.text()
         console.log(`[sync] variant ${variant.id} error body: ${text}`)
+        if (variantRes.status === 403 && text.toLowerCase().includes('non-expiring')) {
+          return Response.json({
+            error: 'Your Shopify connection needs to be refreshed — please reconnect your store in Settings.',
+          }, { status: 403 })
+        }
         return Response.json(
           { error: `Shopify variant update failed: ${variantRes.status}`, detail: text },
           { status: 502 }
