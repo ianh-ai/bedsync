@@ -2072,7 +2072,7 @@ export async function runScrape(tracked_product_id: string, supabase: SupabaseCl
       return Response.json({ error: 'No recognizable size variants found', scraped }, { status: 422 })
     }
 
-    const { error: insertError } = await createAdminClient().from('prices').insert(priceRows)
+    const { error: insertError } = await createAdminClient().from('prices').upsert(priceRows, { onConflict: 'tracked_product_id,size' })
     if (insertError) {
       return Response.json({ error: insertError.message }, { status: 500 })
     }
