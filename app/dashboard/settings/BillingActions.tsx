@@ -49,6 +49,7 @@ export default function BillingActions({
   const router = useRouter()
   const [loading, setLoading] = useState<string | null>(null)
   const [confirmUpgrade, setConfirmUpgrade] = useState<{ tier: string; label: string; price: string } | null>(null)
+  const [confirmDowngrade, setConfirmDowngrade] = useState<{ tier: string; label: string; price: string; priceId: string } | null>(null)
   const [confirmCancel, setConfirmCancel] = useState(false)
 
   const isCanceling = planStatus === 'canceling'
@@ -84,12 +85,16 @@ export default function BillingActions({
     setLoading(null)
   }
 
-  async function handleDowngrade(targetTier: string, priceId: string) {
+  async function handleDowngradeConfirmed() {
+    if (!confirmDowngrade) return
+    const { tier, priceId } = confirmDowngrade
     if (!priceId) {
-      alert(`Configuration error: price ID for the "${targetTier}" plan is not set. Check NEXT_PUBLIC_STRIPE_${targetTier.toUpperCase()}_PRICE_ID in your environment.`)
+      alert(`Configuration error: price ID for the "${tier}" plan is not set. Check NEXT_PUBLIC_STRIPE_${tier.toUpperCase()}_PRICE_ID in your environment.`)
+      setConfirmDowngrade(null)
       return
     }
-    setLoading(`downgrade-${targetTier}`)
+    setConfirmDowngrade(null)
+    setLoading(`downgrade-${tier}`)
     const result = await apiPost('/api/stripe/downgrade', { newPriceId: priceId })
     if (result.error) alert(result.error)
     else router.refresh()
@@ -131,6 +136,36 @@ export default function BillingActions({
 
   return (
     <>
+      {/* Downgrade confirmation modal */}
+      {confirmDowngrade && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="bg-white rounded-2xl shadow-xl p-6 max-w-sm w-full">
+            <h3 className="text-base font-bold text-gray-900 mb-2">
+              Downgrade your plan?
+            </h3>
+            <p className="text-sm text-gray-500 mb-6">
+              You&apos;ll lose access to premium features at the end of your billing period.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={handleDowngradeConfirmed}
+                disabled={loading !== null}
+                className="flex-1 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold py-2.5 rounded-lg transition-colors disabled:opacity-60"
+              >
+                Confirm downgrade
+              </button>
+              <button
+                onClick={() => setConfirmDowngrade(null)}
+                disabled={loading !== null}
+                className="flex-1 border border-gray-200 text-gray-700 text-sm font-medium py-2.5 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-60"
+              >
+                Keep current plan
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Cancel confirmation modal */}
       {confirmCancel && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
@@ -268,7 +303,7 @@ export default function BillingActions({
             {downgradeOptions.map(opt => (
               <button
                 key={opt.tier}
-                onClick={() => handleDowngrade(opt.tier, opt.priceId)}
+                onClick={() => setConfirmDowngrade(opt)}
                 disabled={loading !== null}
                 className="w-full text-left px-4 py-3 rounded-lg border border-gray-200 bg-gray-50 hover:bg-gray-100 text-sm font-medium text-gray-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
               >
