@@ -9,7 +9,6 @@ async function getProductForUser(id: string, userId: string) {
     .select('id')
     .eq('id', id)
     .eq('user_id', userId)
-    .is('deleted_at', null)
     .single()
   return data ?? null
 }
@@ -47,10 +46,18 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
   if (!product) return Response.json({ error: 'Not found' }, { status: 404 })
 
   const admin = createAdminClient()
+
+  const { error: pricesError } = await admin
+    .from('prices')
+    .delete()
+    .eq('tracked_product_id', id)
+  if (pricesError) return Response.json({ error: pricesError.message }, { status: 500 })
+
   const { error } = await admin
     .from('tracked_products')
-    .update({ deleted_at: new Date().toISOString() })
+    .delete()
     .eq('id', id)
+    .eq('user_id', user.id)
   if (error) return Response.json({ error: error.message }, { status: 500 })
 
   // Un-pause brands that now fall within the plan limit after this brand slot freed up.
