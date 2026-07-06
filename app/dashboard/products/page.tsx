@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { getUserProfile, getBrandCount } from '@/lib/subscription'
 import { getPlanLimit } from '@/lib/plans'
 import ProductsClient from './ProductsClient'
@@ -9,8 +10,10 @@ export default async function ProductsPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
+  const admin = createAdminClient()
+
   const [{ data: store }, profile, brandCount] = await Promise.all([
-    supabase.from('shopify_stores').select('id, platform').eq('user_id', user!.id).single(),
+    admin.from('shopify_stores').select('id, platform').eq('user_id', user!.id).single(),
     getUserProfile(user!.id),
     getBrandCount(user!.id),
   ])
@@ -20,14 +23,16 @@ export default async function ProductsPage() {
   const atLimit    = brandLimit !== Infinity && brandCount >= brandLimit
   const limitLabel = brandLimit === Infinity ? '∞' : String(brandLimit)
 
-  const { data: products } = store
-    ? await supabase
+  const { data: products, error: productsError } = store
+    ? await admin
         .from('tracked_products')
         .select('id, label, shopify_product_title, brand, shopify_product_id, price_rule, price_mode, markup_value, markup_type, guardrail_min, guardrail_max, guardrails, last_synced_at, sync_paused')
         .eq('store_id', store.id)
         .is('deleted_at', null)
         .order('created_at', { ascending: false })
-    : { data: [] }
+    : { data: [], error: null }
+
+  console.log('products query result:', products, productsError)
 
   const allProducts = products ?? []
   const pausedProducts = allProducts
@@ -37,7 +42,7 @@ export default async function ProductsPage() {
 
   const queenByProduct: Record<string, number | null> = {}
   if (productIds.length > 0) {
-    const { data: queenPrices } = await supabase
+    const { data: queenPrices } = await admin
       .from('prices')
       .select('tracked_product_id, sale_price, scraped_at')
       .in('tracked_product_id', productIds)
