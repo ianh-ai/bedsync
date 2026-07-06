@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic'
 
 import { createRouteClient } from '@/lib/supabase/route'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { resumeBrandsWithinLimit } from '@/lib/subscription'
 import stripe from '@/lib/stripe'
 
 const PRICE_TO_TIER: Record<string, string> = {
@@ -43,6 +44,8 @@ export async function POST(request: Request) {
       .from('profiles')
       .update({ plan_tier: newTier })
       .eq('id', user.id)
+
+    await resumeBrandsWithinLimit(user.id, newTier)
 
     return Response.json({ success: true })
   } catch (err: unknown) {

@@ -1,16 +1,17 @@
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { getUserProfile, resumeBrandsWithinLimit } from '@/lib/subscription'
 
-async function getProductForUser(supabase: Awaited<ReturnType<typeof createClient>>, id: string, userId: string) {
-  const { data } = await supabase
+async function getProductForUser(id: string, userId: string) {
+  const admin = createAdminClient()
+  const { data } = await admin
     .from('tracked_products')
-    .select('id, store_id, shopify_stores!inner(user_id)')
+    .select('id')
     .eq('id', id)
+    .eq('user_id', userId)
     .is('deleted_at', null)
     .single()
-  if (!data) return null
-  const store = data.shopify_stores as unknown as { user_id: string }
-  if (store.user_id !== userId) return null
-  return data
+  return data ?? null
 }
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -19,7 +20,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const product = await getProductForUser(supabase, id, user.id)
+  const product = await getProductForUser(id, user.id)
   if (!product) return Response.json({ error: 'Not found' }, { status: 404 })
 
   const body = await request.json()
@@ -29,7 +30,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (key in body) update[key] = body[key] ?? null
   }
 
-  const { error } = await supabase.from('tracked_products').update(update).eq('id', id)
+  const admin = createAdminClient()
+  const { error } = await admin.from('tracked_products').update(update).eq('id', id)
   if (error) return Response.json({ error: error.message }, { status: 500 })
 
   return Response.json({ success: true })
@@ -41,14 +43,21 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const product = await getProductForUser(supabase, id, user.id)
+  const product = await getProductForUser(id, user.id)
   if (!product) return Response.json({ error: 'Not found' }, { status: 404 })
 
-  const { error } = await supabase
+  const admin = createAdminClient()
+  const { error } = await admin
     .from('tracked_products')
     .update({ deleted_at: new Date().toISOString() })
     .eq('id', id)
   if (error) return Response.json({ error: error.message }, { status: 500 })
+
+  // Un-pause brands that now fall within the plan limit after this brand slot freed up.
+  const profile = await getUserProfile(user.id)
+  if (profile) {
+    await resumeBrandsWithinLimit(user.id, profile.plan_tier)
+  }
 
   return Response.json({ success: true })
 }

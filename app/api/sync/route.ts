@@ -54,6 +54,10 @@ export async function runSync(
       return Response.json({ error: 'Product not found' }, { status: 404 })
     }
 
+    if ((product as { sync_paused?: boolean }).sync_paused) {
+      return Response.json({ skipped: true, reason: 'Brand sync paused — over plan limit' })
+    }
+
     // Fetch all price rows for this product ordered newest-first, then deduplicate
     // in JS to get the most recent row per size (equivalent to DISTINCT ON (size)).
     const { data: allPrices, error: pricesError } = await supabase

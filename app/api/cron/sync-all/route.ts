@@ -65,7 +65,7 @@ export async function GET(request: Request) {
 
     const { data: products } = await admin
       .from('tracked_products')
-      .select('id, label, shopify_product_title')
+      .select('id, label, shopify_product_title, sync_paused')
       .eq('store_id', store.id)
       .is('deleted_at', null)
 
@@ -76,10 +76,19 @@ export async function GET(request: Request) {
 
     let succeeded = 0
     let failed = 0
+    let paused = 0
     const productResults: ProductResult[] = []
 
     for (const product of products) {
-      const name = product.label || product.shopify_product_title || product.id
+      const name = (product.label as string | null) || (product.shopify_product_title as string | null) || product.id
+
+      if ((product as { sync_paused?: boolean }).sync_paused) {
+        productResults.push({ name, status: 'ok' })
+        paused++
+        console.log(`[cron:sync-all] ${store.shop_domain} / "${name}": skipped (sync paused — over plan limit)`)
+        continue
+      }
+
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const scrapeRes = await runScrape(product.id, admin as any)
@@ -120,7 +129,7 @@ export async function GET(request: Request) {
     }
 
     results.push({ store: store.shop_domain, total: products.length, succeeded, failed, products: productResults })
-    console.log(`[cron:sync-all] ${store.shop_domain}: ${succeeded}/${products.length} succeeded, ${failed} failed`)
+    console.log(`[cron:sync-all] ${store.shop_domain}: ${succeeded}/${products.length} succeeded, ${failed} failed, ${paused} paused`)
   }
 
   return Response.json({ processed: stores.length, results })

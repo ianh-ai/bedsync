@@ -34,6 +34,44 @@ export async function getBrandCount(userId: string): Promise<number> {
   return distinct.size
 }
 
+export async function resumeBrandsWithinLimit(userId: string, planTier: string): Promise<void> {
+  const admin = createAdminClient()
+  const limit = getPlanLimit(planTier)
+
+  const { data: allActive } = await admin
+    .from('tracked_products')
+    .select('id, brand, created_at, sync_paused')
+    .eq('user_id', userId)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: true })
+
+  const products = (allActive ?? []) as Array<{ id: string; brand: string; created_at: string; sync_paused: boolean }>
+
+  const brandOrder: string[] = []
+  const brandSet = new Set<string>()
+  for (const p of products) {
+    if (!brandSet.has(p.brand)) {
+      brandSet.add(p.brand)
+      brandOrder.push(p.brand)
+    }
+  }
+
+  const withinLimit = limit === Infinity
+    ? new Set(brandOrder)
+    : new Set(brandOrder.slice(0, limit))
+
+  const idsToResume = products
+    .filter(p => p.sync_paused && withinLimit.has(p.brand))
+    .map(p => p.id)
+
+  if (idsToResume.length > 0) {
+    await admin
+      .from('tracked_products')
+      .update({ sync_paused: false })
+      .in('id', idsToResume)
+  }
+}
+
 export async function canAddBrand(
   userId: string,
   brandName: string
