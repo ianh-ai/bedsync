@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo, Fragment } from 'react'
+import { useState, useEffect, useRef, useMemo, Fragment } from 'react'
 import { Pencil, BarChart2, Trash2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import PriceChart from '../history/[id]/PriceChart'
@@ -75,6 +75,12 @@ export default function ProductsClient({
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
 
+  // Multi-select state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
+  const [bulkDeleting, setBulkDeleting] = useState(false)
+  const selectAllRef = useRef<HTMLInputElement>(null)
+
   // Stats state
   const [statsLoading, setStatsLoading] = useState(false)
   const [statsChartData, setStatsChartData] = useState<ChartPoint[]>([])
@@ -84,6 +90,8 @@ export default function ProductsClient({
   const [editForm, setEditForm] = useState<EditForm | null>(null)
   const [editSaving, setEditSaving] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
+
+  const anyChecked = selectedIds.size > 0
 
   // Load price history when stats modal opens
   useEffect(() => {
@@ -113,6 +121,72 @@ export default function ProductsClient({
         setStatsLoading(false)
       })
   }, [statsId])
+
+  const brands = useMemo(
+    () => [...new Set(products.map(p => p.brand ?? 'Other'))].sort(),
+    [products]
+  )
+
+  const filtered = useMemo(() => {
+    let result = products
+    if (search.trim()) {
+      const q = search.toLowerCase()
+      result = result.filter(p =>
+        (p.label ?? p.shopify_product_title ?? '').toLowerCase().includes(q)
+      )
+    }
+    if (activeBrand !== null) {
+      result = result.filter(p => (p.brand ?? 'Other') === activeBrand)
+    }
+    return result
+  }, [products, search, activeBrand])
+
+  const grouped = useMemo(() => {
+    const byBrand = new Map<string, Product[]>()
+    for (const p of filtered) {
+      const b = p.brand ?? 'Other'
+      if (!byBrand.has(b)) byBrand.set(b, [])
+      byBrand.get(b)!.push(p)
+    }
+    for (const ps of byBrand.values()) {
+      ps.sort((a, b) =>
+        (a.label ?? a.shopify_product_title ?? '').localeCompare(b.label ?? b.shopify_product_title ?? '')
+      )
+    }
+    return [...byBrand.entries()].sort(([a], [b]) => a.localeCompare(b))
+  }, [filtered])
+
+  // Keep select-all checkbox indeterminate state in sync
+  useEffect(() => {
+    if (!selectAllRef.current) return
+    const filteredIds = filtered.map(p => p.id)
+    const allSelected = filteredIds.length > 0 && filteredIds.every(id => selectedIds.has(id))
+    const someSelected = filteredIds.some(id => selectedIds.has(id))
+    selectAllRef.current.indeterminate = someSelected && !allSelected
+  }, [selectedIds, filtered])
+
+  function toggleSelect(id: string) {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function handleSelectAll() {
+    const filteredIds = filtered.map(p => p.id)
+    const allSelected = filteredIds.length > 0 && filteredIds.every(id => selectedIds.has(id))
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (allSelected) {
+        filteredIds.forEach(id => next.delete(id))
+      } else {
+        filteredIds.forEach(id => next.add(id))
+      }
+      return next
+    })
+  }
 
   async function handleSync(id: string) {
     setSyncStates(s => ({ ...s, [id]: 'checking' }))
@@ -206,46 +280,23 @@ export default function ProductsClient({
     setDeleting(false)
     if (!res.ok) return
     setProducts(ps => ps.filter(p => p.id !== id))
+    setSelectedIds(prev => { const next = new Set(prev); next.delete(id); return next })
     setDeleteId(null)
     if (editId === id) setEditId(null)
   }
 
+  async function handleBulkDelete() {
+    setBulkDeleting(true)
+    const ids = [...selectedIds]
+    await Promise.all(ids.map(id => fetch(`/api/products/${id}`, { method: 'DELETE' })))
+    setProducts(ps => ps.filter(p => !ids.includes(p.id)))
+    setSelectedIds(new Set())
+    setBulkDeleteOpen(false)
+    setBulkDeleting(false)
+  }
+
   const editProduct = editId ? products.find(p => p.id === editId) : null
   const statsProduct = statsId ? products.find(p => p.id === statsId) : null
-
-  const brands = useMemo(
-    () => [...new Set(products.map(p => p.brand ?? 'Other'))].sort(),
-    [products]
-  )
-
-  const filtered = useMemo(() => {
-    let result = products
-    if (search.trim()) {
-      const q = search.toLowerCase()
-      result = result.filter(p =>
-        (p.label ?? p.shopify_product_title ?? '').toLowerCase().includes(q)
-      )
-    }
-    if (activeBrand !== null) {
-      result = result.filter(p => (p.brand ?? 'Other') === activeBrand)
-    }
-    return result
-  }, [products, search, activeBrand])
-
-  const grouped = useMemo(() => {
-    const byBrand = new Map<string, Product[]>()
-    for (const p of filtered) {
-      const b = p.brand ?? 'Other'
-      if (!byBrand.has(b)) byBrand.set(b, [])
-      byBrand.get(b)!.push(p)
-    }
-    for (const ps of byBrand.values()) {
-      ps.sort((a, b) =>
-        (a.label ?? a.shopify_product_title ?? '').localeCompare(b.label ?? b.shopify_product_title ?? '')
-      )
-    }
-    return [...byBrand.entries()].sort(([a], [b]) => a.localeCompare(b))
-  }, [filtered])
 
   return (
     <>
@@ -308,121 +359,164 @@ export default function ProductsClient({
             <p style={{fontSize: 13}}>No products match your search.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-100 bg-gray-50">
-                  <th className="text-left font-semibold text-gray-500 uppercase tracking-wider" style={{fontSize: 10, padding: '8px 24px'}}>Product</th>
-                  <th className="text-left font-semibold text-gray-500 uppercase tracking-wider" style={{fontSize: 10, padding: '8px 16px'}}>Queen Price</th>
-                  <th className="text-left font-semibold text-gray-500 uppercase tracking-wider" style={{fontSize: 10, padding: '8px 16px'}}>Last Synced</th>
-                  <th className="text-right font-semibold text-gray-500 uppercase tracking-wider" style={{fontSize: 10, padding: '8px 24px'}}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {grouped.map(([brand, brandProducts]) => (
-                  <Fragment key={brand}>
-                    <tr className="bg-gray-50 border-t border-gray-200">
-                      <td colSpan={4} style={{padding: '5px 24px'}}>
-                        <span className="font-semibold text-gray-500 uppercase tracking-wider capitalize" style={{fontSize: 10}}>{brand}</span>
-                      </td>
-                    </tr>
-                    {brandProducts.map(product => {
-                      const name = product.label || product.shopify_product_title || product.id
-                      const syncStatus = syncStates[product.id] ?? 'idle'
-                      const isDeleteConfirming = deleteId === product.id
+          <>
+            {/* Bulk-action bar — visible only when at least one product is selected */}
+            {anyChecked && (
+              <div className="flex items-center justify-between border-b border-red-100 bg-red-50" style={{padding: '8px 24px'}}>
+                <span className="font-medium text-red-700" style={{fontSize: 12}}>
+                  {selectedIds.size} selected
+                </span>
+                <button
+                  onClick={() => setBulkDeleteOpen(true)}
+                  className="inline-flex items-center font-semibold bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors"
+                  style={{fontSize: 12, padding: '4px 10px', gap: 5}}
+                >
+                  <Trash2 style={{width: 13, height: 13}} />
+                  Delete selected
+                </button>
+              </div>
+            )}
 
-                      return (
-                        <tr key={product.id} className="hover:bg-gray-50 transition-colors border-t border-gray-100">
-                          <td className="font-medium text-gray-900 max-w-xs truncate" style={{fontSize: 13, padding: '9px 24px'}}>{name}</td>
-                          <td className="font-mono text-gray-900" style={{fontSize: 13, padding: '9px 16px'}}>{fmt(product.queen_sale_price)}</td>
-                          <td className="text-gray-400" style={{fontSize: 11, padding: '9px 16px'}}>{timeAgo(product.last_synced_at)}</td>
-                          <td style={{padding: '9px 24px'}}>
-                            <div className="flex items-center justify-end" style={{gap: 6}}>
-                              {isDeleteConfirming ? (
-                                <>
-                                  <span className="font-medium text-red-600" style={{fontSize: 11}}>Delete?</span>
-                                  <button
-                                    onClick={() => handleDelete(product.id)}
-                                    disabled={deleting}
-                                    className="font-semibold bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors disabled:opacity-60"
-                                    style={{fontSize: 11, padding: '4px 8px'}}
-                                  >
-                                    {deleting ? '…' : 'Confirm'}
-                                  </button>
-                                  <button
-                                    onClick={() => setDeleteId(null)}
-                                    className="font-medium border border-gray-200 rounded-md text-gray-600 hover:bg-gray-50"
-                                    style={{fontSize: 11, padding: '4px 8px'}}
-                                  >
-                                    Cancel
-                                  </button>
-                                </>
-                              ) : (
-                                <>
-                                  <button
-                                    onClick={() => handleSync(product.id)}
-                                    disabled={syncStatus !== 'idle'}
-                                    title="Sync prices"
-                                    className={
-                                      syncStatus === 'done'
-                                        ? 'inline-flex items-center font-medium rounded-md border transition-colors bg-green-50 text-green-700 border-green-200 disabled:opacity-50'
-                                        : syncStatus === 'error'
-                                        ? 'inline-flex items-center font-medium rounded-md border transition-colors bg-red-50 text-red-600 border-red-200 disabled:opacity-50'
-                                        : 'inline-flex items-center font-medium rounded-md border transition-colors border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50'
-                                    }
-                                    style={{fontSize: 11, padding: '4px 8px', gap: 4}}
-                                  >
-                                    {syncStatus === 'checking' ? (
-                                      <svg className="animate-spin" style={{width: 12, height: 12}} fill="none" viewBox="0 0 24 24">
-                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                                      </svg>
-                                    ) : (
-                                      <svg style={{width: 12, height: 12}} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                                      </svg>
-                                    )}
-                                    {syncStatus === 'done' ? 'Synced' : syncStatus === 'error' ? 'Error' : syncStatus === 'checking' ? 'Syncing…' : 'Sync'}
-                                  </button>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-100 bg-gray-50">
+                    {/* Select-all checkbox */}
+                    <th style={{padding: '8px 4px 8px 24px', width: 32}}>
+                      <input
+                        ref={selectAllRef}
+                        type="checkbox"
+                        checked={filtered.length > 0 && filtered.every(p => selectedIds.has(p.id))}
+                        onChange={handleSelectAll}
+                        style={{width: 14, height: 14, cursor: 'pointer', accentColor: '#4f46e5'}}
+                      />
+                    </th>
+                    <th className="text-left font-semibold text-gray-500 uppercase tracking-wider" style={{fontSize: 10, padding: '8px 24px 8px 0'}}>Product</th>
+                    <th className="text-left font-semibold text-gray-500 uppercase tracking-wider" style={{fontSize: 10, padding: '8px 16px'}}>Queen Price</th>
+                    <th className="text-left font-semibold text-gray-500 uppercase tracking-wider" style={{fontSize: 10, padding: '8px 16px'}}>Last Synced</th>
+                    <th className="text-right font-semibold text-gray-500 uppercase tracking-wider" style={{fontSize: 10, padding: '8px 24px'}}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {grouped.map(([brand, brandProducts]) => (
+                    <Fragment key={brand}>
+                      <tr className="bg-gray-50 border-t border-gray-200">
+                        <td colSpan={5} style={{padding: '5px 24px'}}>
+                          <span className="font-semibold text-gray-500 uppercase tracking-wider capitalize" style={{fontSize: 10}}>{brand}</span>
+                        </td>
+                      </tr>
+                      {brandProducts.map(product => {
+                        const name = product.label || product.shopify_product_title || product.id
+                        const syncStatus = syncStates[product.id] ?? 'idle'
+                        const isDeleteConfirming = deleteId === product.id
+                        const isSelected = selectedIds.has(product.id)
 
-                                  <button
-                                    onClick={() => openEdit(product)}
-                                    title="Edit product"
-                                    className="border border-gray-200 rounded-md text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors"
-                                    style={{padding: 5}}
-                                  >
-                                    <Pencil style={{width: 13, height: 13}} />
-                                  </button>
+                        return (
+                          <tr key={product.id} className="group hover:bg-gray-50 transition-colors border-t border-gray-100">
+                            {/* Per-row checkbox — hidden until hovered or any row is checked */}
+                            <td style={{padding: '9px 4px 9px 24px', width: 32}}>
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => toggleSelect(product.id)}
+                                className={anyChecked
+                                  ? 'transition-opacity opacity-100'
+                                  : 'transition-opacity opacity-0 group-hover:opacity-100'
+                                }
+                                style={{width: 14, height: 14, cursor: 'pointer', accentColor: '#4f46e5'}}
+                              />
+                            </td>
+                            <td className="font-medium text-gray-900 max-w-xs truncate" style={{fontSize: 13, padding: '9px 24px 9px 0'}}>{name}</td>
+                            <td className="font-mono text-gray-900" style={{fontSize: 13, padding: '9px 16px'}}>{fmt(product.queen_sale_price)}</td>
+                            <td className="text-gray-400" style={{fontSize: 11, padding: '9px 16px'}}>{timeAgo(product.last_synced_at)}</td>
+                            <td style={{padding: '9px 24px'}}>
+                              <div className="flex items-center justify-end" style={{gap: 6}}>
+                                {isDeleteConfirming ? (
+                                  <>
+                                    <span className="font-medium text-red-600" style={{fontSize: 11}}>Delete?</span>
+                                    <button
+                                      onClick={() => handleDelete(product.id)}
+                                      disabled={deleting}
+                                      className="font-semibold bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors disabled:opacity-60"
+                                      style={{fontSize: 11, padding: '4px 8px'}}
+                                    >
+                                      {deleting ? '…' : 'Confirm'}
+                                    </button>
+                                    <button
+                                      onClick={() => setDeleteId(null)}
+                                      className="font-medium border border-gray-200 rounded-md text-gray-600 hover:bg-gray-50"
+                                      style={{fontSize: 11, padding: '4px 8px'}}
+                                    >
+                                      Cancel
+                                    </button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <button
+                                      onClick={() => handleSync(product.id)}
+                                      disabled={syncStatus !== 'idle'}
+                                      title="Sync prices"
+                                      className={
+                                        syncStatus === 'done'
+                                          ? 'inline-flex items-center font-medium rounded-md border transition-colors bg-green-50 text-green-700 border-green-200 disabled:opacity-50'
+                                          : syncStatus === 'error'
+                                          ? 'inline-flex items-center font-medium rounded-md border transition-colors bg-red-50 text-red-600 border-red-200 disabled:opacity-50'
+                                          : 'inline-flex items-center font-medium rounded-md border transition-colors border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50'
+                                      }
+                                      style={{fontSize: 11, padding: '4px 8px', gap: 4}}
+                                    >
+                                      {syncStatus === 'checking' ? (
+                                        <svg className="animate-spin" style={{width: 12, height: 12}} fill="none" viewBox="0 0 24 24">
+                                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                                        </svg>
+                                      ) : (
+                                        <svg style={{width: 12, height: 12}} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                        </svg>
+                                      )}
+                                      {syncStatus === 'done' ? 'Synced' : syncStatus === 'error' ? 'Error' : syncStatus === 'checking' ? 'Syncing…' : 'Sync'}
+                                    </button>
 
-                                  <button
-                                    onClick={() => setStatsId(product.id)}
-                                    title="Price history"
-                                    className="border border-gray-200 rounded-md text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors"
-                                    style={{padding: 5}}
-                                  >
-                                    <BarChart2 style={{width: 13, height: 13}} />
-                                  </button>
+                                    <button
+                                      onClick={() => openEdit(product)}
+                                      title="Edit product"
+                                      className="border border-gray-200 rounded-md text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors"
+                                      style={{padding: 5}}
+                                    >
+                                      <Pencil style={{width: 13, height: 13}} />
+                                    </button>
 
-                                  <button
-                                    onClick={() => setDeleteId(product.id)}
-                                    title="Delete product"
-                                    className="border border-gray-200 rounded-md text-gray-500 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors"
-                                    style={{padding: 5}}
-                                  >
-                                    <Trash2 style={{width: 13, height: 13}} />
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </Fragment>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                                    <button
+                                      onClick={() => setStatsId(product.id)}
+                                      title="Price history"
+                                      className="border border-gray-200 rounded-md text-gray-500 hover:bg-gray-50 hover:text-gray-700 transition-colors"
+                                      style={{padding: 5}}
+                                    >
+                                      <BarChart2 style={{width: 13, height: 13}} />
+                                    </button>
+
+                                    <button
+                                      onClick={() => setDeleteId(product.id)}
+                                      title="Delete product"
+                                      className="border border-gray-200 rounded-md text-gray-500 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors"
+                                      style={{padding: 5}}
+                                    >
+                                      <Trash2 style={{width: 13, height: 13}} />
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </Fragment>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
 
@@ -628,7 +722,7 @@ export default function ProductsClient({
         </div>
       )}
 
-      {/* Delete confirmation modal */}
+      {/* Single-product delete confirmation modal */}
       {deleteId && !editId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/40" onClick={() => setDeleteId(null)} />
@@ -650,6 +744,35 @@ export default function ProductsClient({
                 className="flex-1 text-sm font-semibold py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg disabled:opacity-60"
               >
                 {deleting ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk delete confirmation modal */}
+      {bulkDeleteOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => !bulkDeleting && setBulkDeleteOpen(false)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6">
+            <h2 className="text-base font-semibold text-gray-900 mb-2">
+              Delete {selectedIds.size} product{selectedIds.size !== 1 ? 's' : ''}?
+            </h2>
+            <p className="text-sm text-gray-500 mb-6">This cannot be undone.</p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setBulkDeleteOpen(false)}
+                disabled={bulkDeleting}
+                className="flex-1 text-sm font-medium py-2 border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleBulkDelete}
+                disabled={bulkDeleting}
+                className="flex-1 text-sm font-semibold py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg disabled:opacity-60"
+              >
+                {bulkDeleting ? 'Deleting…' : 'Delete'}
               </button>
             </div>
           </div>
