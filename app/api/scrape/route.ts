@@ -2021,7 +2021,7 @@ export async function runScrape(tracked_product_id: string, supabase: SupabaseCl
     }
 
     // Fetch previous prices for spike detection before inserting new ones
-    const { data: prevPricesData } = await supabase
+    const { data: prevPricesData } = await createAdminClient()
       .from('prices')
       .select('size, sale_price')
       .eq('tracked_product_id', tracked_product_id)
@@ -2072,7 +2072,7 @@ export async function runScrape(tracked_product_id: string, supabase: SupabaseCl
       return Response.json({ error: 'No recognizable size variants found', scraped }, { status: 422 })
     }
 
-    const { error: insertError } = await supabase.from('prices').insert(priceRows)
+    const { error: insertError } = await createAdminClient().from('prices').insert(priceRows)
     if (insertError) {
       return Response.json({ error: insertError.message }, { status: 500 })
     }
@@ -2086,7 +2086,7 @@ export async function runScrape(tracked_product_id: string, supabase: SupabaseCl
       regular_price: r.regular_price,
       recorded_at: r.scraped_at,
     }))
-    const { error: historyError } = await supabase.from('price_history').insert(historyRows)
+    const { error: historyError } = await createAdminClient().from('price_history').insert(historyRows)
     if (historyError) {
       console.error(`[scrape] price_history insert error:`, historyError.message)
     } else {
