@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getUserProfile, getBrandCount } from '@/lib/subscription'
 import { getPlanLimit } from '@/lib/plans'
 import ProductsClient from './ProductsClient'
+import PausedBrandsBanner from './PausedBrandsBanner'
 
 export default async function ProductsPage() {
   const supabase = await createClient()
@@ -22,13 +23,16 @@ export default async function ProductsPage() {
   const { data: products } = store
     ? await supabase
         .from('tracked_products')
-        .select('id, label, shopify_product_title, brand, shopify_product_id, price_rule, price_mode, markup_value, markup_type, guardrail_min, guardrail_max, guardrails, last_synced_at')
+        .select('id, label, shopify_product_title, brand, shopify_product_id, price_rule, price_mode, markup_value, markup_type, guardrail_min, guardrail_max, guardrails, last_synced_at, sync_paused')
         .eq('store_id', store.id)
         .is('deleted_at', null)
         .order('created_at', { ascending: false })
     : { data: [] }
 
   const allProducts = products ?? []
+  const pausedProducts = allProducts
+    .filter((p: { sync_paused?: boolean }) => p.sync_paused)
+    .map((p: { id: string; brand: string }) => ({ id: p.id, brand: p.brand }))
   const productIds = allProducts.map((p: { id: string }) => p.id)
 
   const queenByProduct: Record<string, number | null> = {}
@@ -101,6 +105,8 @@ export default async function ProductsPage() {
           </Link>
         )}
       </div>
+
+      <PausedBrandsBanner products={pausedProducts} />
 
       {!store && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-6 text-center mb-6">

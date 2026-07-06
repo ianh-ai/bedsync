@@ -7,13 +7,15 @@ export interface UserProfile {
   stripe_customer_id: string | null
   stripe_subscription_id: string | null
   current_period_end: string | null
+  pending_plan_tier: string | null
+  pending_plan_date: string | null
 }
 
 export async function getUserProfile(userId: string): Promise<UserProfile | null> {
   const supabase = createAdminClient()
   const { data, error } = await supabase
     .from('profiles')
-    .select('plan_tier, plan_status, stripe_customer_id, stripe_subscription_id, current_period_end')
+    .select('plan_tier, plan_status, stripe_customer_id, stripe_subscription_id, current_period_end, pending_plan_tier, pending_plan_date')
     .eq('id', userId)
     .single()
   if (error || !data) return null

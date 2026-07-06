@@ -42,6 +42,8 @@ export default async function SettingsPage() {
           planTier={planTier}
           planStatus={planStatus}
           currentPeriodEnd={profile?.current_period_end ?? null}
+          pendingPlanTier={profile?.pending_plan_tier ?? null}
+          pendingPlanDate={profile?.pending_plan_date ?? null}
           brandCount={brandCount}
           brandLimit={brandLimit}
         />
