@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { CATALOG, type CatalogEntry } from '@/lib/catalog'
@@ -10,6 +11,7 @@ function trackKey(brand: string, name: string): string {
 }
 
 export default function AddProductPage() {
+  const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [storeId, setStoreId] = useState<string | null>(null)
   const [trackedKeys, setTrackedKeys] = useState<Set<string>>(new Set())
@@ -90,6 +92,7 @@ export default function AddProductPage() {
     if (res.ok) {
       setAddedLocally(prev => new Set([...prev, entry.id]))
       setChecked(prev => { const n = new Set(prev); n.delete(entry.id); return n })
+      router.refresh()
     } else {
       const body = await res.json().catch(() => ({}))
       alert(body.error ?? 'Failed to add product')

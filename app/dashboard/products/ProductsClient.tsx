@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useMemo, Fragment } from 'react'
+import { useRouter } from 'next/navigation'
 import { Pencil, BarChart2, Trash2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import PriceChart from '../history/[id]/PriceChart'
@@ -91,6 +92,7 @@ export default function ProductsClient({
   const [editSaving, setEditSaving] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
 
+  const router = useRouter()
   const anyChecked = selectedIds.size > 0
 
   // Load price history when stats modal opens
@@ -283,6 +285,7 @@ export default function ProductsClient({
     setSelectedIds(prev => { const next = new Set(prev); next.delete(id); return next })
     setDeleteId(null)
     if (editId === id) setEditId(null)
+    router.refresh()
   }
 
   async function handleBulkDelete() {
@@ -293,6 +296,7 @@ export default function ProductsClient({
     setSelectedIds(new Set())
     setBulkDeleteOpen(false)
     setBulkDeleting(false)
+    router.refresh()
   }
 
   const editProduct = editId ? products.find(p => p.id === editId) : null
