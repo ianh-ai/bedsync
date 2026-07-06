@@ -38,6 +38,7 @@ export default function AddProductPage() {
           .from('tracked_products')
           .select('brand, label')
           .eq('store_id', store.id)
+          .is('deleted_at', null)
 
         const keys = new Set<string>()
         for (const p of products ?? []) {
@@ -70,22 +71,28 @@ export default function AddProductPage() {
 
     setAdding(prev => new Set([...prev, entry.id]))
 
-    const supabase = createClient()
-    const { error } = await supabase.from('tracked_products').insert({
-      store_id: storeId,
-      shopify_product_id: shopifyId,
-      shopify_product_title: entry.name,
-      manufacturer_url: entry.url,
-      brand: entry.brand,
-      label: entry.name,
-      price_rule: 'match_sale',
-      variant_filter: entry.variantFilter ?? null,
+    const res = await fetch('/api/products', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        store_id: storeId,
+        shopify_product_id: shopifyId,
+        shopify_product_title: entry.name,
+        manufacturer_url: entry.url,
+        brand: entry.brand,
+        label: entry.name,
+        price_rule: 'match_sale',
+        variant_filter: entry.variantFilter ?? null,
+      }),
     })
 
     setAdding(prev => { const n = new Set(prev); n.delete(entry.id); return n })
-    if (!error) {
+    if (res.ok) {
       setAddedLocally(prev => new Set([...prev, entry.id]))
       setChecked(prev => { const n = new Set(prev); n.delete(entry.id); return n })
+    } else {
+      const body = await res.json().catch(() => ({}))
+      alert(body.error ?? 'Failed to add product')
     }
   }
 

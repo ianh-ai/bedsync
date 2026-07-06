@@ -1,7 +1,17 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
+import Image from 'next/image'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
+import { TrendingUp } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
+
+const PLAN_PRICE_IDS: Record<string, string> = {
+  starter: process.env.NEXT_PUBLIC_STRIPE_STARTER_PRICE_ID ?? '',
+  pro:     process.env.NEXT_PUBLIC_STRIPE_PRO_PRICE_ID ?? '',
+  business: process.env.NEXT_PUBLIC_STRIPE_BUSINESS_PRICE_ID ?? '',
+}
 
 // ── Animated counter ──────────────────────────────────────────────────────────
 
@@ -193,10 +203,16 @@ function DemoPlayer() {
 // ── FAQ accordion ─────────────────────────────────────────────────────────────
 
 const FAQ_ITEMS = [
-  { q: 'Will this work with my existing Shopify products?', a: 'Yes. You just need your existing Shopify Product ID — BedSync handles the rest.' },
-  { q: "What if a brand's website changes?", a: 'We monitor our integrations and update them when brand websites change. Priority is given to Pro and Business plan users.' },
-  { q: 'Can I track both sale price and regular price?', a: "Yes. BedSync captures both the regular (compare-at) price and sale price when available, and maps both to your store's variants." },
-  { q: 'Is WooCommerce fully supported?', a: 'Yes. Connect with your Consumer Key and Secret and BedSync syncs prices the same way it does for Shopify.' },
+  { q: 'What is BedSync?', a: 'BedSync automatically monitors mattress manufacturer websites for price changes and updates your online store, helping you keep pricing accurate without manual work.' },
+  { q: 'Who is BedSync for?', a: 'BedSync is built for mattress retailers, furniture stores, and eCommerce businesses that sell mattresses from brands like Helix, Brooklyn Bedding, Bear, Birch, and more.' },
+  { q: 'How does BedSync work?', a: 'Simply connect your store, add the products you want to track, and BedSync continuously monitors manufacturer pricing. When prices change, BedSync updates your store automatically or lets you review the changes first.' },
+  { q: 'How often does BedSync check for price changes?', a: 'You can choose automatic syncing on a schedule — daily, weekly, monthly — or manually trigger a sync whenever you want.' },
+  { q: 'Which eCommerce platforms are supported?', a: 'BedSync supports Shopify and WooCommerce, with additional platform support planned for the future.' },
+  { q: 'Can I track hundreds of mattresses?', a: 'Absolutely. BedSync is designed to handle large catalogs with bulk product management and bulk syncing.' },
+  { q: 'Can I export my pricing?', a: 'Yes. You can export pricing as a CSV, making it easy to create price sheets, signage, or marketing materials.' },
+  { q: 'Can I see what changed?', a: 'Yes. Every sync includes before-and-after pricing, timestamps, and a complete history of all detected changes.' },
+  { q: 'Is there a history of previous prices?', a: 'Yes. BedSync stores historical pricing so you can review trends and verify when changes occurred.' },
+  { q: 'Do you offer onboarding?', a: 'Yes. Every account includes a guided onboarding experience to help you get your first products syncing quickly.' },
 ]
 
 function FAQAccordion() {
@@ -225,19 +241,187 @@ function FAQAccordion() {
   )
 }
 
+// ── Brand logo ────────────────────────────────────────────────────────────────
+
+function BrandLogo({ name, logo }: { name: string; logo: string }) {
+  return (
+    <div className="shrink-0 bg-white rounded-lg shadow-sm flex items-center justify-center" style={{ padding: 12 }}>
+      <div style={{ position: 'relative', width: 110, height: 40 }}>
+        <Image src={logo} alt={name} fill sizes="160px" style={{ objectFit: 'contain' }} />
+      </div>
+    </div>
+  )
+}
+
+// ── Pricing cards (checkout-aware) ────────────────────────────────────────────
+
+const PLANS = [
+  { slug: 'starter', name: 'Starter', price: '$49', features: ['2 brands', 'Daily sync', 'Price history'], popular: false },
+  { slug: 'pro',     name: 'Pro',     price: '$99', features: ['5 brands', 'Daily sync', 'Price history'], popular: true },
+  { slug: 'business',name: 'Business',price: '$149',features: ['Unlimited brands', 'Daily sync', 'Price history', 'Priority support'], popular: false },
+] as const
+
+function PricingCards({ message }: { message?: string | null }) {
+  const [loading, setLoading] = useState<string | null>(null)
+
+  const handleCheckout = useCallback(async (slug: string) => {
+    setLoading(slug)
+    const priceId = PLAN_PRICE_IDS[slug]
+    const supabase = createClient()
+    const { data: { session } } = await supabase.auth.getSession()
+
+    if (!session) {
+      window.location.href = `/login?plan=${slug}`
+      return
+    }
+
+    const res = await fetch('/api/stripe/checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ priceId }),
+    })
+    const text = await res.text()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let json: any = {}
+    try { json = JSON.parse(text) } catch { /* non-JSON body — error shown via alert below */ }
+    if (json.url) window.location.href = json.url
+    else {
+      setLoading(null)
+      alert(json.error ?? 'Something went wrong. Please try again.')
+    }
+  }, [])
+
+  return (
+    <>
+    {message && (
+      <div className="max-w-5xl mx-auto mb-6 flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl px-5 py-3.5">
+        <svg className="w-4 h-4 text-amber-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <p className="text-sm font-medium text-amber-800">{message}</p>
+      </div>
+    )}
+    <div className="max-w-5xl mx-auto grid sm:grid-cols-3 gap-5 mb-6">
+      {PLANS.map(({ slug, name, price, features, popular }) => (
+        <div key={slug} className={`relative rounded-2xl p-6 flex flex-col ${popular ? 'bg-blue-600 shadow-2xl shadow-blue-200' : 'bg-white border border-gray-200 shadow-sm'}`}>
+          {popular && (
+            <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
+              <span className="bg-indigo-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow">Most Popular</span>
+            </div>
+          )}
+          <div className="mb-5">
+            <h3 className={`text-base font-bold mb-2 ${popular ? 'text-white' : 'text-gray-900'}`}>{name}</h3>
+            <div className="flex items-end gap-1">
+              <span className={`text-4xl font-bold ${popular ? 'text-white' : 'text-gray-900'}`}>{price}</span>
+              <span className={`text-sm mb-1 ${popular ? 'text-blue-200' : 'text-gray-500'}`}>/mo</span>
+            </div>
+          </div>
+          <ul className="space-y-2.5 flex-1 mb-6">
+            {features.map(f => (
+              <li key={f} className={`flex items-start gap-2 text-sm ${popular ? 'text-blue-100' : 'text-gray-600'}`}>
+                <svg className={`w-4 h-4 shrink-0 mt-0.5 ${popular ? 'text-blue-300' : 'text-blue-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                {f}
+              </li>
+            ))}
+          </ul>
+          <button
+            onClick={() => handleCheckout(slug)}
+            disabled={loading === slug}
+            className={`w-full text-center text-sm font-bold py-3 rounded-xl transition-colors disabled:opacity-70 ${popular ? 'bg-white text-blue-600 hover:bg-blue-50' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
+          >
+            {loading === slug ? 'Loading…' : 'Get Started'}
+          </button>
+        </div>
+      ))}
+    </div>
+    </>
+  )
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
-const BRANDS = ['Helix', 'Bear', 'Avocado', 'Puffy', 'Nectar', 'Casper', 'Brooklyn Bedding', 'Dreamcloud', 'Naturepedic', 'Birch', 'MLily', 'Tempur-Pedic', 'Leesa', 'WinkBeds']
+const BRAND_LOGOS = [
+  { name: 'Avocado', logo: '/logos/avocado.png' },
+  { name: 'Bear', logo: '/logos/bear.png' },
+  { name: 'Birch', logo: '/logos/birch.png' },
+  { name: 'Brooklyn Bedding', logo: '/logos/brooklyn-bedding.png' },
+  { name: 'Casper', logo: '/logos/casper.png' },
+  { name: 'DreamCloud', logo: '/logos/dreamcloud.png' },
+  { name: 'Helix', logo: '/logos/helix.png' },
+  { name: 'Leesa', logo: '/logos/leesa.png' },
+  { name: 'Mlily', logo: '/logos/mlily.png' },
+  { name: 'Naturepedic', logo: '/logos/naturepedic.png' },
+  { name: 'Nectar', logo: '/logos/nectar.png' },
+  { name: 'Plank', logo: '/logos/plank.png' },
+  { name: 'Puffy', logo: '/logos/puffy.png' },
+  { name: 'Tempur-Pedic', logo: '/logos/tempur-pedic.png' },
+  { name: 'WinkBeds', logo: '/logos/winkbeds.png' },
+]
 
-const NAV_LINKS: [string, string][] = [['Features', '#features'], ['How it Works', '#how-it-works'], ['Pricing', '#pricing'], ['FAQ', '#faq']]
+const NAV_LINKS: [string, string][] = [['Features', '#features'], ['How it Works', '#how-it-works'], ['Featured Brands', '#featured-brands'], ['Pricing', '#pricing'], ['FAQ', '#faq']]
 
 export default function HomePage() {
+  const searchParams = useSearchParams()
+  const pricingMessage = searchParams.get('message')
+
   const [scrolled, setScrolled] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
   const [pricingCount, setPricingCount] = useState(1247)
+  const [ctaLoading, setCtaLoading] = useState(false)
+  const [authEmail, setAuthEmail] = useState<string | null>(null) // null = not yet checked
+  const [portalLoading, setPortalLoading] = useState(false)
+
+  useEffect(() => {
+    const supabase = createClient()
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setAuthEmail(session?.user?.email ?? '')
+    })
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
+      setAuthEmail(session?.user?.email ?? '')
+    })
+    return () => subscription.unsubscribe()
+  }, [])
+
+  const handleSignOut = useCallback(async () => {
+    const supabase = createClient()
+    await supabase.auth.signOut()
+    // onAuthStateChange will set authEmail to ''
+  }, [])
+
+  const handleBillingPortal = useCallback(async () => {
+    setPortalLoading(true)
+    const res = await fetch('/api/stripe/portal', { method: 'POST' })
+    const json = await res.json()
+    if (json.url) window.location.href = json.url
+    else setPortalLoading(false)
+  }, [])
+
+  const handleStarterCheckout = useCallback(async () => {
+    setCtaLoading(true)
+    const priceId = PLAN_PRICE_IDS['starter']
+    const supabase = createClient()
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) { window.location.href = '/login?plan=starter'; return }
+    const res = await fetch('/api/stripe/checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ priceId }),
+    })
+    const text = await res.text()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let json: any = {}
+    try { json = JSON.parse(text) } catch { /* non-JSON body — error shown via alert below */ }
+    if (json.url) window.location.href = json.url
+    else {
+      setCtaLoading(false)
+      alert(json.error ?? 'Something went wrong. Please try again.')
+    }
+  }, [])
 
   const productsCount = useCountUp(2400)
-  const brandsCount = useCountUp(14)
+  const brandsCount = useCountUp(15)
 
   useEffect(() => {
     const fn = () => setScrolled(window.scrollY > 20)
@@ -254,13 +438,17 @@ export default function HomePage() {
     <>
       <style>{`
         @keyframes marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
-        .animate-marquee { animation: marquee 35s linear infinite; }
+        .animate-marquee { animation: marquee 40s linear infinite; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
         .animate-fade-in { animation: fadeIn 0.35s ease both; }
         @keyframes float { 0%,100% { transform: translateY(0px); } 50% { transform: translateY(-8px); } }
         .animate-float { animation: float 4s ease-in-out infinite; }
         @keyframes gradientShift { 0%,100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
         .animate-gradient { background-size: 200% auto; animation: gradientShift 4s ease infinite; }
+        .brand-logo { filter: grayscale(100%) opacity(0.55); transition: filter 0.25s ease; }
+        .brand-logo:hover { filter: grayscale(0%) opacity(1); }
+        .feature-card { transition: transform 0.15s ease, box-shadow 0.15s ease; }
+        .feature-card:hover { transform: translateY(-3px); box-shadow: 0 12px 32px rgba(0,0,0,0.09); }
       `}</style>
 
       <div className="min-h-screen bg-white">
@@ -277,8 +465,17 @@ export default function HomePage() {
             </nav>
 
             <div className="hidden md:flex items-center gap-3">
-              <Link href="/login" className="text-sm text-gray-600 hover:text-gray-900 transition-colors">Sign In</Link>
-              <Link href="/signup" className="text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors">Get Started</Link>
+              {authEmail === null ? null : authEmail ? (
+                <>
+                  <span className="text-sm text-gray-500 max-w-[180px] truncate">{authEmail}</span>
+                  <button onClick={handleSignOut} className="text-sm text-gray-600 hover:text-gray-900 transition-colors">Sign Out</button>
+                </>
+              ) : (
+                <>
+                  <Link href="/login" className="text-sm text-gray-600 hover:text-gray-900 transition-colors">Sign In</Link>
+                  <a href="#pricing" className="text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors">Get Started</a>
+                </>
+              )}
             </div>
 
             <button onClick={() => setMobileOpen(o => !o)} className="md:hidden p-2 text-gray-600 hover:text-gray-900">
@@ -296,8 +493,17 @@ export default function HomePage() {
                 <a key={label} href={href} onClick={() => setMobileOpen(false)} className="block text-sm text-gray-700 py-1">{label}</a>
               ))}
               <div className="flex flex-col gap-2 pt-3 border-t border-gray-100">
-                <Link href="/login" className="text-sm text-gray-700">Sign In</Link>
-                <Link href="/signup" className="text-sm font-semibold bg-blue-600 text-white px-4 py-2.5 rounded-lg text-center">Get Started Free</Link>
+                {authEmail ? (
+                  <>
+                    <span className="text-sm text-gray-500 truncate">{authEmail}</span>
+                    <button onClick={handleSignOut} className="text-sm text-gray-700 text-left">Sign Out</button>
+                  </>
+                ) : (
+                  <>
+                    <Link href="/login" className="text-sm text-gray-700">Sign In</Link>
+                    <a href="#pricing" onClick={() => setMobileOpen(false)} className="text-sm font-semibold bg-blue-600 text-white px-4 py-2.5 rounded-lg text-center">Get Started</a>
+                  </>
+                )}
               </div>
             </div>
           )}
@@ -323,9 +529,9 @@ export default function HomePage() {
             </p>
 
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-14">
-              <Link href="/signup" className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white font-semibold px-7 py-3.5 rounded-xl transition-colors shadow-lg shadow-blue-100 text-sm">
-                Get Started Free
-              </Link>
+              <a href="#pricing" className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white font-semibold px-7 py-3.5 rounded-xl transition-colors shadow-lg shadow-blue-100 text-sm text-center">
+                Get Started
+              </a>
               <a href="#demo" className="w-full sm:w-auto border border-gray-300 hover:border-gray-400 text-gray-700 font-semibold px-7 py-3.5 rounded-xl transition-colors text-center text-sm">
                 See how it works
               </a>
@@ -395,14 +601,12 @@ export default function HomePage() {
         </section>
 
         {/* BRANDS MARQUEE */}
-        <section className="py-10 bg-white border-y border-gray-100 overflow-hidden">
-          <p className="text-center text-xs font-semibold text-gray-400 uppercase tracking-widest mb-6">14 brands supported and counting</p>
+        <section className="py-10 bg-gray-50 border-y border-gray-100 overflow-hidden">
+          <p className="text-center text-xs font-semibold text-gray-400 uppercase tracking-widest mb-8">15 brands monitored and counting</p>
           <div className="flex">
-            <div className="flex gap-3 animate-marquee whitespace-nowrap">
-              {[...BRANDS, ...BRANDS].map((brand, i) => (
-                <span key={i} className="inline-flex items-center px-4 py-2 bg-gray-50 border border-gray-200 rounded-full text-sm font-medium text-gray-700 shrink-0">
-                  {brand}
-                </span>
+            <div className="flex items-center gap-6 animate-marquee" style={{ whiteSpace: 'nowrap' }}>
+              {[...BRAND_LOGOS, ...BRAND_LOGOS].map((brand, i) => (
+                <BrandLogo key={i} name={brand.name} logo={brand.logo} />
               ))}
             </div>
           </div>
@@ -428,22 +632,89 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* SOLUTION */}
+        {/* FEATURES */}
         <section id="features" className="py-24 px-4 sm:px-6 bg-[#F8FAFF]">
           <div className="max-w-5xl mx-auto text-center mb-14">
             <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">BedSync does it for you</h2>
             <p className="text-gray-500 max-w-xl mx-auto">Connect your store once. Add your products. BedSync handles the rest — every single day.</p>
           </div>
-          <div className="max-w-5xl mx-auto grid sm:grid-cols-3 gap-5">
-            {[
-              { icon: '🔗', title: 'Monitors manufacturer prices daily', body: 'Pulls current sale and regular prices directly from brand websites.' },
-              { icon: '📋', title: 'Matches your product variants', body: 'Automatically maps sizes (Twin, Queen, King, etc.) to your store\'s variants.' },
-              { icon: '🔄', title: 'Syncs to Shopify or WooCommerce', body: 'Updates your store prices at 6am every morning without you lifting a finger.' },
-            ].map(({ icon, title, body }) => (
-              <div key={title} className="bg-white rounded-xl p-6 border border-gray-200 shadow-sm" style={{ borderLeftColor: '#2563eb', borderLeftWidth: '3px' }}>
-                <div className="text-2xl mb-3">{icon}</div>
-                <h3 className="text-base font-bold text-gray-900 mb-2">{title}</h3>
-                <p className="text-sm text-gray-500 leading-relaxed">{body}</p>
+          <div className="max-w-5xl mx-auto grid grid-cols-2 lg:grid-cols-4 gap-5">
+            {([
+              {
+                icon: (
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                ),
+                title: 'Automatic Price Sync',
+                body: 'Prices update every morning at 6am — no manual work required.',
+              },
+              {
+                icon: (
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                ),
+                title: 'Bulk Sync',
+                body: 'Sync all your tracked products at once with a single click.',
+              },
+              {
+                icon: (
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                  </svg>
+                ),
+                title: 'Price History',
+                body: 'Track every price change across all products with detailed charts.',
+              },
+              {
+                icon: (
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                  </svg>
+                ),
+                title: 'Sync Logs',
+                body: 'Review a detailed log of every sync event and price update.',
+              },
+              {
+                icon: (
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+                  </svg>
+                ),
+                title: 'Shopify Integration',
+                body: 'Connect in one click via OAuth and update all your Shopify variants automatically.',
+              },
+              {
+                icon: (
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+                  </svg>
+                ),
+                title: 'WooCommerce Integration',
+                body: 'Connect with your Consumer Key and Secret — full WooCommerce support.',
+              },
+              {
+                icon: (
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                  </svg>
+                ),
+                title: 'Price Guardrails',
+                body: 'Set min and max price limits — syncs are skipped when prices fall outside range.',
+              },
+              {
+                icon: <TrendingUp className="w-5 h-5" />,
+                title: 'Markup Rules',
+                body: 'Add a fixed or percentage markup above manufacturer prices — applied automatically on every sync.',
+              },
+            ] as { icon: React.ReactNode; title: string; body: string }[]).map(({ icon, title, body }) => (
+              <div key={title} className="feature-card bg-white rounded-xl p-5 border border-gray-200 shadow-sm">
+                <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600 mb-4">
+                  {icon}
+                </div>
+                <h3 className="text-sm font-bold text-gray-900 mb-1.5">{title}</h3>
+                <p className="text-xs text-gray-500 leading-relaxed">{body}</p>
               </div>
             ))}
           </div>
@@ -560,6 +831,24 @@ export default function HomePage() {
           </div>
         </section>
 
+        {/* FEATURED BRANDS */}
+        <section id="featured-brands" className="py-24 px-4 sm:px-6 bg-white">
+          <div className="max-w-5xl mx-auto text-center mb-12">
+            <h2 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-3">Brands We Monitor</h2>
+            <p className="text-gray-500">15 major mattress brands and growing.</p>
+          </div>
+          <div className="max-w-5xl mx-auto grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+            {BRAND_LOGOS.map(({ name, logo }) => (
+              <div key={name} className="bg-white rounded-xl p-5 border border-gray-200 shadow-sm flex flex-col items-center gap-3 hover:shadow-md transition-shadow">
+                <div style={{ position: 'relative', width: '100%', height: 48 }}>
+                  <Image src={logo} alt={name} fill sizes="160px" style={{ objectFit: 'contain' }} />
+                </div>
+                <span className="text-xs font-semibold text-gray-600 text-center">{name}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+
         {/* PRICING */}
         <section id="pricing" className="py-24 px-4 sm:px-6 bg-[#F8FAFF]">
           <div className="max-w-5xl mx-auto text-center mb-12">
@@ -573,45 +862,26 @@ export default function HomePage() {
             </div>
           </div>
 
-          <div className="max-w-5xl mx-auto grid sm:grid-cols-3 gap-5 mb-6">
-            {[
-              { name: 'Starter', price: '$49', features: ['2 brands', 'Daily sync', 'Price history'], popular: false },
-              { name: 'Pro', price: '$99', features: ['5 brands', 'Daily sync', 'Price history'], popular: true },
-              { name: 'Business', price: '$149', features: ['Unlimited brands', 'Daily sync', 'Price history', 'Priority support'], popular: false },
-            ].map(({ name, price, features, popular }) => (
-              <div key={name} className={`relative rounded-2xl p-6 flex flex-col ${popular ? 'bg-blue-600 shadow-2xl shadow-blue-200' : 'bg-white border border-gray-200 shadow-sm'}`}>
-                {popular && (
-                  <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
-                    <span className="bg-indigo-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow">Most Popular</span>
-                  </div>
-                )}
-                <div className="mb-5">
-                  <h3 className={`text-base font-bold mb-2 ${popular ? 'text-white' : 'text-gray-900'}`}>{name}</h3>
-                  <div className="flex items-end gap-1">
-                    <span className={`text-4xl font-bold ${popular ? 'text-white' : 'text-gray-900'}`}>{price}</span>
-                    <span className={`text-sm mb-1 ${popular ? 'text-blue-200' : 'text-gray-500'}`}>/mo</span>
-                  </div>
-                </div>
-                <ul className="space-y-2.5 flex-1 mb-6">
-                  {features.map(f => (
-                    <li key={f} className={`flex items-start gap-2 text-sm ${popular ? 'text-blue-100' : 'text-gray-600'}`}>
-                      <svg className={`w-4 h-4 shrink-0 mt-0.5 ${popular ? 'text-blue-300' : 'text-blue-500'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                      </svg>
-                      {f}
-                    </li>
-                  ))}
-                </ul>
-                <Link
-                  href="/signup"
-                  className={`w-full text-center text-sm font-bold py-3 rounded-xl transition-colors ${popular ? 'bg-white text-blue-600 hover:bg-blue-50' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
-                >
-                  Get Started
-                </Link>
-              </div>
-            ))}
-          </div>
+          <PricingCards message={pricingMessage} />
           <p className="text-center text-sm text-gray-500">All plans include Shopify and WooCommerce support. Cancel anytime.</p>
+          {authEmail && (
+            <div className="text-center mt-5 space-y-2">
+              <p className="text-sm text-gray-500">
+                Already subscribed?{' '}
+                <button
+                  onClick={handleBillingPortal}
+                  disabled={portalLoading}
+                  className="text-blue-600 hover:underline font-medium disabled:opacity-50"
+                >
+                  {portalLoading ? 'Loading…' : 'Manage your subscription →'}
+                </button>
+              </p>
+              <p className="text-xs text-gray-400">
+                Signed in as {authEmail}.{' '}
+                <button onClick={handleSignOut} className="hover:underline">Sign out</button>
+              </p>
+            </div>
+          )}
         </section>
 
         {/* FAQ */}
@@ -627,9 +897,13 @@ export default function HomePage() {
           <div className="max-w-2xl mx-auto text-center">
             <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">Start syncing your prices today</h2>
             <p className="text-blue-100 text-lg mb-8 opacity-90">Join retailers who stopped updating prices manually.</p>
-            <Link href="/signup" className="inline-block bg-white text-blue-600 font-bold px-8 py-3.5 rounded-xl hover:bg-blue-50 transition-colors shadow-lg text-sm">
-              Get Started Free
-            </Link>
+            <button
+              onClick={handleStarterCheckout}
+              disabled={ctaLoading}
+              className="inline-block bg-white text-blue-600 font-bold px-8 py-3.5 rounded-xl hover:bg-blue-50 transition-colors shadow-lg text-sm disabled:opacity-70"
+            >
+              {ctaLoading ? 'Loading…' : 'Get Started'}
+            </button>
           </div>
         </section>
 

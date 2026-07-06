@@ -20,6 +20,7 @@ export async function GET() {
     .from('tracked_products')
     .select('id, label, shopify_product_title')
     .eq('store_id', store.id)
+    .is('deleted_at', null)
     .order('created_at', { ascending: false })
 
   if (!products || products.length === 0) {

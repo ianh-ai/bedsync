@@ -18,6 +18,7 @@ export default async function SyncLogPage() {
         .from('tracked_products')
         .select('id')
         .eq('store_id', store.id)
+        .is('deleted_at', null)
     : { data: [] }
 
   const productIds = (products ?? []).map((p: { id: string }) => p.id)

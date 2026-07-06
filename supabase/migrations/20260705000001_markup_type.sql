@@ -1,0 +1,5 @@
+ALTER TABLE tracked_products
+  ADD COLUMN IF NOT EXISTS price_mode TEXT,
+  ADD COLUMN IF NOT EXISTS markup_type TEXT,
+  ADD COLUMN IF NOT EXISTS guardrail_min NUMERIC,
+  ADD COLUMN IF NOT EXISTS guardrail_max NUMERIC;

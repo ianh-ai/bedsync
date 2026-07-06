@@ -143,7 +143,15 @@ export async function runSync(
       const { regular_price, sale_price } = priceBySize[matchedSize]
       let newPrice: number
 
-      if (product.price_rule === 'match_sale') {
+      if (product.price_mode === 'match') {
+        newPrice = sale_price ?? regular_price
+      } else if (product.price_mode === 'markup') {
+        const base = sale_price ?? regular_price
+        const val = product.markup_value ?? 0
+        newPrice = product.markup_type === 'fixed'
+          ? parseFloat((base + val).toFixed(2))
+          : parseFloat((base * (1 + val / 100)).toFixed(2))
+      } else if (product.price_rule === 'match_sale') {
         newPrice = sale_price ?? regular_price
       } else if (product.price_rule === 'match_regular') {
         newPrice = regular_price
@@ -159,7 +167,7 @@ export async function runSync(
       // actually higher than the computed price — avoids a fake strikethrough.
       const newCompareAt: number | null = regular_price > newPrice ? regular_price : null
 
-      // Guardrail check — skip if newPrice is outside configured floor/ceiling for this size
+      // Per-size guardrail check (floor/ceiling from guardrails jsonb)
       const guardrailsMap = (product.guardrails as Record<string, { floor?: number; ceiling?: number }> | null) ?? {}
       const rail = guardrailsMap[matchedSize!] ?? {}
       if (rail.floor != null && newPrice < rail.floor) {
@@ -169,6 +177,20 @@ export async function runSync(
       }
       if (rail.ceiling != null && newPrice > rail.ceiling) {
         console.log(`[sync] SKIPPED "${matchedSize}" — $${newPrice.toFixed(2)} above ceiling $${rail.ceiling}`)
+        skippedSizes.push(matchedSize!)
+        continue
+      }
+
+      // Global guardrail check (guardrail_min / guardrail_max columns)
+      const gMin = product.guardrail_min as number | null
+      const gMax = product.guardrail_max as number | null
+      if (gMin != null && newPrice < gMin) {
+        console.log(`[sync] SKIPPED "${matchedSize}" — $${newPrice.toFixed(2)} below global min $${gMin}`)
+        skippedSizes.push(matchedSize!)
+        continue
+      }
+      if (gMax != null && newPrice > gMax) {
+        console.log(`[sync] SKIPPED "${matchedSize}" — $${newPrice.toFixed(2)} above global max $${gMax}`)
         skippedSizes.push(matchedSize!)
         continue
       }

@@ -67,6 +67,7 @@ export async function GET(request: Request) {
       .from('tracked_products')
       .select('id, label, shopify_product_title')
       .eq('store_id', store.id)
+      .is('deleted_at', null)
 
     if (!products?.length) {
       results.push({ store: store.shop_domain, total: 0, succeeded: 0, failed: 0, products: [] })

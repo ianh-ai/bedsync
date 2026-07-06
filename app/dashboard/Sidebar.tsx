@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import SignOutButton from './SignOutButton'
@@ -12,6 +13,16 @@ const NAV = [
     icon: (
       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h18M3 12h18M3 17h18" />
+      </svg>
+    ),
+  },
+  {
+    href: '/dashboard/products',
+    label: 'Products',
+    exact: false,
+    icon: (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
       </svg>
     ),
   },
@@ -48,8 +59,29 @@ const NAV = [
   },
 ]
 
-export default function Sidebar({ email }: { email: string }) {
+interface SidebarProps {
+  email: string
+  planTier: string
+  planStatus: string
+  brandCount: number
+  brandLimit: number
+}
+
+export default function Sidebar({ email, planTier, planStatus, brandCount, brandLimit }: SidebarProps) {
   const pathname = usePathname()
+  const [billingLoading, setBillingLoading] = useState(false)
+
+  const planLabel = planTier.charAt(0).toUpperCase() + planTier.slice(1)
+  const limitLabel = brandLimit === Infinity ? '∞' : String(brandLimit)
+  const isActive   = planStatus === 'active'
+
+  async function handleManageBilling() {
+    setBillingLoading(true)
+    const res = await fetch('/api/stripe/portal', { method: 'POST' })
+    const json = await res.json()
+    if (json.url) window.location.href = json.url
+    else setBillingLoading(false)
+  }
 
   return (
     <aside className="w-60 bg-white border-r border-gray-200 flex flex-col shrink-0">
@@ -77,8 +109,23 @@ export default function Sidebar({ email }: { email: string }) {
         })}
       </nav>
 
-      <div className="px-3 py-4 border-t border-gray-100">
-        <p className="text-xs text-gray-400 px-3 mb-2 truncate">{email}</p>
+      <div className="px-3 py-4 border-t border-gray-100 space-y-2">
+        {isActive && (
+          <div className="px-3 py-2 bg-indigo-50 rounded-lg">
+            <p className="text-xs font-semibold text-indigo-700">{planLabel} Plan</p>
+            <p className="text-xs text-indigo-500 mt-0.5">{brandCount} of {limitLabel} brands used</p>
+          </div>
+        )}
+        {isActive && (
+          <button
+            onClick={handleManageBilling}
+            disabled={billingLoading}
+            className="w-full text-left px-3 py-2 rounded-lg text-xs font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-colors disabled:opacity-50"
+          >
+            {billingLoading ? 'Loading…' : 'Manage Billing'}
+          </button>
+        )}
+        <p className="text-xs text-gray-400 px-3 truncate">{email}</p>
         <SignOutButton />
       </div>
     </aside>

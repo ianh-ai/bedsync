@@ -17,7 +17,13 @@ function fmt(n: number) {
   return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
+  const params = await searchParams
+  const showSubscribedBanner = params.subscribed === 'true'
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
@@ -32,6 +38,7 @@ export default async function DashboardPage() {
         .from('tracked_products')
         .select('id, label, shopify_product_title, scrape_status, scrape_attempted_at')
         .eq('store_id', store.id)
+        .is('deleted_at', null)
     : { data: [] }
 
   const allProducts = products ?? []
@@ -157,6 +164,16 @@ export default async function DashboardPage() {
         </div>
         <SyncAllButton productIds={productIds} />
       </div>
+
+      {/* Subscribed banner */}
+      {showSubscribedBanner && (
+        <div className="bg-green-50 border border-green-200 rounded-xl px-6 py-4 mb-6 flex items-center gap-3">
+          <svg className="w-5 h-5 text-green-600 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+          <p className="text-sm font-medium text-green-800">Subscription activated! You&apos;re all set.</p>
+        </div>
+      )}
 
       {/* No store warning */}
       {!store && (
