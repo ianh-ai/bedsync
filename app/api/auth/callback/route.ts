@@ -57,6 +57,7 @@ export async function GET(request: NextRequest) {
       client_id: process.env.SHOPIFY_API_KEY,
       client_secret: secret,
       code,
+      expiring: '1',
     }),
   })
 
@@ -67,6 +68,8 @@ export async function GET(request: NextRequest) {
     scope?: string
     token_type?: string
     expires_in?: number
+    refresh_token?: string
+    refresh_token_expires_in?: number
   }
 
   if (!tokenRes.ok) {
@@ -77,12 +80,13 @@ export async function GET(request: NextRequest) {
     )
   }
 
-  const { access_token, scope, token_type, expires_in } = tokenBody
+  const { access_token, scope, token_type, expires_in, refresh_token, refresh_token_expires_in } = tokenBody
   console.log('[oauth:callback]', JSON.stringify({
     scope,
     token_type,
     expires_in: expires_in ?? 'none',
     prefix: access_token?.slice(0, 12),
+    refresh_token_prefix: refresh_token?.slice(0, 12) ?? 'none',
   }))
 
   if (!access_token) {
@@ -90,6 +94,11 @@ export async function GET(request: NextRequest) {
       `access_token missing from Shopify response (status ${tokenRes.status}): ${JSON.stringify(tokenBody)}`
     )
   }
+
+  const expiresAt = expires_in ? new Date(Date.now() + expires_in * 1000).toISOString() : null
+  const refreshTokenExpiresAt = refresh_token_expires_in
+    ? new Date(Date.now() + refresh_token_expires_in * 1000).toISOString()
+    : null
 
   // --- Get current Supabase user ---
   const supabase = await createClient()
@@ -107,7 +116,15 @@ export async function GET(request: NextRequest) {
   const { error: upsertError } = await supabase
     .from('shopify_stores')
     .upsert(
-      { user_id: user.id, shop_domain: shop, access_token },
+      {
+        user_id: user.id,
+        shop_domain: shop,
+        access_token,
+        expires_at: expiresAt,
+        refresh_token: refresh_token ?? null,
+        refresh_token_expires_at: refreshTokenExpiresAt,
+        updated_at: new Date().toISOString(),
+      },
       { onConflict: 'user_id' }
     )
 

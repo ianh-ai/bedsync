@@ -15,7 +15,7 @@ export async function GET(request: Request) {
 
   const { data: stores, error: storesError } = await admin
     .from('shopify_stores')
-    .select('id, shop_domain, access_token, sync_schedule')
+    .select('id, shop_domain, access_token, user_id, sync_schedule')
     .neq('sync_schedule', 'off')
     .not('sync_schedule', 'is', null)
 
@@ -106,6 +106,7 @@ export async function GET(request: Request) {
         const syncRes = await runSync(product.id, admin as any, {
           shop_domain: store.shop_domain,
           access_token: store.access_token,
+          userId: store.user_id,
         })
         if (!syncRes.ok) {
           const body = await syncRes.json().catch(() => ({})) as Record<string, string>

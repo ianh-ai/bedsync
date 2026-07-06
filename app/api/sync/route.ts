@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { syncWooCommerce } from '@/lib/sync-woocommerce'
 import { rotateShopifyToken } from '@/lib/shopify-token-rotation'
+import { getValidShopifyToken } from '@/lib/shopify-token'
 
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>
 
@@ -16,11 +17,12 @@ const SIZE_TO_VARIANT_TITLE: Record<string, string[]> = {
 export async function runSync(
   tracked_product_id: string,
   supabase: SupabaseClient,
-  storeOverride?: { shop_domain: string; access_token: string }
+  storeOverride?: { shop_domain: string; access_token: string; userId?: string }
 ): Promise<Response> {
   try {
     type StoreRecord = { shop_domain: string; access_token: string; platform?: string | null; wc_consumer_key?: string | null; wc_consumer_secret?: string | null }
     let store: StoreRecord | null = storeOverride ?? null
+    let syncUserId: string | null = storeOverride?.userId ?? null
 
     if (!store) {
       const { data: { user } } = await supabase.auth.getUser()
@@ -28,6 +30,7 @@ export async function runSync(
       if (!user) {
         return Response.json({ error: 'Unauthorized' }, { status: 401 })
       }
+      syncUserId = user.id
 
       const { data: storeData, error: storeError } = await supabase
         .from('shopify_stores')
@@ -101,7 +104,18 @@ export async function runSync(
     }
 
     const shopDomain = store.shop_domain
-    let accessToken = store.access_token as string
+    let accessToken: string
+    if (syncUserId) {
+      try {
+        accessToken = await getValidShopifyToken(syncUserId)
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        console.error(`[sync] token validation failed for user ${syncUserId}: ${msg}`)
+        return Response.json({ error: msg }, { status: 503 })
+      }
+    } else {
+      accessToken = store.access_token as string
+    }
 
     const variantsUrl = `https://${shopDomain}/admin/api/2024-01/products/${product.shopify_product_id}/variants.json`
     console.log(`[sync] GET ${variantsUrl}`)
