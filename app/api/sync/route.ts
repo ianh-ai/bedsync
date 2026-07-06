@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { syncWooCommerce } from '@/lib/sync-woocommerce'
 import { rotateShopifyToken } from '@/lib/shopify-token-rotation'
 import { getValidShopifyToken } from '@/lib/shopify-token'
@@ -47,10 +48,11 @@ export async function runSync(
       console.log(`[sync] store override: ${store.shop_domain}`)
     }
 
-    const { data: product, error: productError } = await supabase
+    const { data: product, error: productError } = await createAdminClient()
       .from('tracked_products')
       .select('*')
       .eq('id', tracked_product_id)
+      .eq('user_id', syncUserId ?? '')
       .single()
     console.log(`[sync] product: ${product?.label ?? product?.shopify_product_title ?? 'none'} id=${product?.shopify_product_id ?? 'none'} (error: ${productError?.message ?? 'none'})`)
 
