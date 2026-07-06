@@ -75,6 +75,7 @@ export async function runSync(
     console.log(`[sync] prices fetched: ${latestPrices?.length ?? 0} rows (error: ${pricesError?.message ?? 'none'})`)
 
     if (!latestPrices || latestPrices.length === 0) {
+      console.error(`[sync] product ${tracked_product_id}: no scraped prices found — run scrape first`)
       return Response.json({ error: 'No scraped prices found. Run scrape first.' }, { status: 400 })
     }
 
@@ -113,7 +114,7 @@ export async function runSync(
 
     if (!variantsRes.ok) {
       const body = await variantsRes.text()
-      console.log(`[sync] variants error body: ${body}`)
+      console.error(`[sync] GET ${variantsUrl} failed: ${variantsRes.status} — ${body}`)
       if (variantsRes.status === 403 && body.toLowerCase().includes('non-expiring')) {
         return Response.json({
           error: 'Your Shopify connection needs to be refreshed — please reconnect your store in Settings.',
@@ -229,7 +230,7 @@ export async function runSync(
       console.log(`[sync] variant ${variant.id} update response: ${variantRes.status}`)
       if (!variantRes.ok) {
         const text = await variantRes.text()
-        console.log(`[sync] variant ${variant.id} error body: ${text}`)
+        console.error(`[sync] PUT ${variantUrl} failed: ${variantRes.status} — ${text}`)
         if (variantRes.status === 403 && text.toLowerCase().includes('non-expiring')) {
           return Response.json({
             error: 'Your Shopify connection needs to be refreshed — please reconnect your store in Settings.',
@@ -252,6 +253,7 @@ export async function runSync(
     }
 
     if (updatedCount === 0 && skippedSizes.length === 0) {
+      console.error(`[sync] product ${tracked_product_id} (shopify_id=${product.shopify_product_id}): no variant titles matched known sizes — shopify variants: ${shopifyVariants.map(v => `"${v.title}"`).join(', ')}`)
       return Response.json({ error: 'No variant titles matched known sizes' }, { status: 422 })
     }
 
