@@ -23,15 +23,9 @@ export async function POST(request: Request) {
 
     const { data: profile } = await admin
       .from('profiles')
-      .select('stripe_subscription_id, plan_tier, pending_plan_tier')
+      .select('stripe_subscription_id, plan_tier')
       .eq('id', user.id)
       .single()
-
-    console.log('downgrade called with:', {
-      newPriceId,
-      currentTier: profile?.plan_tier,
-      pendingTier: profile?.pending_plan_tier,
-    })
 
     const subscriptionId = profile?.stripe_subscription_id as string | null
     if (!subscriptionId) return Response.json({ error: 'No active subscription' }, { status: 400 })

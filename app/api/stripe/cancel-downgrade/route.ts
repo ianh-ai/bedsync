@@ -15,11 +15,9 @@ export async function POST(request: Request) {
 
     const { data: profile } = await admin
       .from('profiles')
-      .select('stripe_subscription_id, plan_tier, pending_plan_tier')
+      .select('stripe_subscription_id, plan_tier')
       .eq('id', user.id)
       .single()
-
-    console.log('cancel-downgrade — plan_tier:', profile?.plan_tier, 'pending_plan_tier:', profile?.pending_plan_tier)
 
     const subscriptionId = profile?.stripe_subscription_id as string | null
     const currentTier    = (profile?.plan_tier as string | null) ?? 'starter'

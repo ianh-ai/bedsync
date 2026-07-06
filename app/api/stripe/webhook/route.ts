@@ -75,8 +75,6 @@ export async function POST(request: Request) {
       .eq('stripe_customer_id', sub.customer as string)
       .single()
 
-    console.log('webhook subscription.updated — priceId:', priceId, 'resolved tier:', newTier, 'pending_plan_tier:', existingProfile?.pending_plan_tier)
-
     const isScheduledDowngrade = Boolean(existingProfile?.pending_plan_tier)
 
     if (isScheduledDowngrade) {

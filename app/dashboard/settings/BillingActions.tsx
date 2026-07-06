@@ -84,6 +84,10 @@ export default function BillingActions({
   }
 
   async function handleDowngrade(targetTier: string, priceId: string) {
+    if (!priceId) {
+      alert(`Configuration error: price ID for the "${targetTier}" plan is not set. Check NEXT_PUBLIC_STRIPE_${targetTier.toUpperCase()}_PRICE_ID in your environment.`)
+      return
+    }
     setLoading(`downgrade-${targetTier}`)
     const result = await apiPost('/api/stripe/downgrade', { newPriceId: priceId })
     if (result.error) alert(result.error)
