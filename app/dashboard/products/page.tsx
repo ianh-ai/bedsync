@@ -23,14 +23,12 @@ export default async function ProductsPage() {
   const atLimit    = brandLimit !== Infinity && brandCount >= brandLimit
   const limitLabel = brandLimit === Infinity ? '∞' : String(brandLimit)
 
-  const { data: products, error: productsError } = store
-    ? await admin
-        .from('tracked_products')
-        .select('id, label, shopify_product_title, brand, shopify_product_id, price_rule, price_mode, markup_value, markup_type, guardrail_min, guardrail_max, guardrails, last_synced_at, sync_paused')
-        .eq('store_id', store.id)
-        .is('deleted_at', null)
-        .order('created_at', { ascending: false })
-    : { data: [], error: null }
+  const { data: products, error: productsError } = await admin
+    .from('tracked_products')
+    .select('*')
+    .eq('user_id', user!.id)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: false })
 
   console.log('products query result:', products, productsError)
 
