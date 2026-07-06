@@ -118,40 +118,93 @@ async function scrapeHelix(url: string): Promise<ScrapedVariant[]> {
   const targetUrl = url
   console.log(`[scrape:helix] Fetching HTML: ${targetUrl}`)
   let res: Response
-  if (process.env.SCRAPER_API_KEY) {
-    const ultraUrl = `http://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&url=${encodeURIComponent(targetUrl)}&render=true&ultra_premium=true`
-    console.log(`[scrape:helix] ScraperAPI target URL: ${targetUrl}`)
-    console.log(`[scrape:helix] ScraperAPI proxy URL (key redacted): http://api.scraperapi.com?api_key=REDACTED&url=${encodeURIComponent(targetUrl)}&render=true&ultra_premium=true`)
-    let rawRes = await fetch(ultraUrl)
-    let bodyText = await rawRes.text()
-    console.log(`[scrape:helix] ScraperAPI ultra_premium status: ${rawRes.status}, body length: ${bodyText.length}`)
-    if (!rawRes.ok || bodyText.length < 10_000) {
-      console.log(`[scrape:helix] ultra_premium blocked (status=${rawRes.status}, len=${bodyText.length}) — retrying with premium`)
-      const premiumUrl = `http://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&url=${encodeURIComponent(targetUrl)}&render=true&premium=true`
-      rawRes = await fetch(premiumUrl)
-      bodyText = await rawRes.text()
-      console.log(`[scrape:helix] ScraperAPI premium status: ${rawRes.status}, body length: ${bodyText.length}`)
-      if (!rawRes.ok) throw new Error(`ScraperAPI fetch failed: ${rawRes.status}`)
-      console.log(`[scrape:helix] fell back to premium`)
-    } else {
-      console.log(`[scrape:helix] ultra_premium succeeded`)
+  // Helper: fetch a ScraperAPI URL with a 25s abort timeout
+  async function scraperFetch(scraperUrl: string, label: string): Promise<{ ok: boolean; status: number; body: string }> {
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 25_000)
+    try {
+      const r = await fetch(scraperUrl, { signal: controller.signal })
+      const body = await r.text()
+      return { ok: r.ok, status: r.status, body }
+    } catch (e) {
+      if (e instanceof Error && e.name === 'AbortError') {
+        console.log(`[scrape:helix] ${label} timed out after 25s`)
+      }
+      throw e
+    } finally {
+      clearTimeout(timeout)
     }
-    console.log(`[scrape:helix] ScraperAPI body (first 500 chars): ${bodyText.slice(0, 500)}`)
-    // Re-wrap the already-consumed body so the rest of the function can call res.text() / res.ok normally
-    res = new Response(bodyText, { status: rawRes.status, headers: rawRes.headers })
-  } else {
-    console.warn(`[scrape:helix] SCRAPER_API_KEY not set, falling back to direct fetch (may 403 on Vercel)`)
-    res = await fetch(targetUrl, {
-      headers: {
-        ...BROWSER_HEADERS,
-        'Referer': 'https://www.google.com/',
-        'Upgrade-Insecure-Requests': '1',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'cross-site',
-      },
-    })
   }
+
+  let htmlBody: string | null = null
+
+  if (process.env.SCRAPER_API_KEY) {
+    console.log(`[scrape:helix] ScraperAPI target URL: ${targetUrl}`)
+
+    // Attempt 1: ultra_premium
+    try {
+      const ultraUrl = `http://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&url=${encodeURIComponent(targetUrl)}&render=true&ultra_premium=true`
+      console.log(`[scrape:helix] ScraperAPI proxy URL (key redacted): http://api.scraperapi.com?api_key=REDACTED&url=${encodeURIComponent(targetUrl)}&render=true&ultra_premium=true`)
+      const { ok, status, body } = await scraperFetch(ultraUrl, 'ultra_premium')
+      console.log(`[scrape:helix] ScraperAPI ultra_premium status: ${status}, body length: ${body.length}`)
+      if (ok && body.length >= 10_000) {
+        console.log(`[scrape:helix] ultra_premium succeeded`)
+        htmlBody = body
+      } else {
+        console.log(`[scrape:helix] ultra_premium blocked (status=${status}, len=${body.length}) — retrying with premium`)
+      }
+    } catch {
+      console.log(`[scrape:helix] ultra_premium threw — retrying with premium`)
+    }
+
+    // Attempt 2: premium fallback
+    if (!htmlBody) {
+      try {
+        const premiumUrl = `http://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&url=${encodeURIComponent(targetUrl)}&render=true&premium=true`
+        const { ok, status, body } = await scraperFetch(premiumUrl, 'premium')
+        console.log(`[scrape:helix] ScraperAPI premium status: ${status}, body length: ${body.length}`)
+        if (ok && body.length >= 10_000) {
+          console.log(`[scrape:helix] fell back to premium`)
+          htmlBody = body
+        } else {
+          console.log(`[scrape:helix] premium also blocked (status=${status}, len=${body.length})`)
+        }
+      } catch {
+        console.log(`[scrape:helix] premium threw`)
+      }
+    }
+  }
+
+  // Attempt 3: direct fetch (no proxy)
+  if (!htmlBody) {
+    console.log(`[scrape:helix] attempting direct fetch: ${targetUrl}`)
+    try {
+      const directRes = await fetch(targetUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.5',
+        },
+        signal: AbortSignal.timeout(10_000),
+      })
+      console.log(`[scrape:helix] direct fetch status: ${directRes.status}`)
+      const body = await directRes.text()
+      if (directRes.ok && body.length >= 10_000) {
+        console.log(`[scrape:helix] direct fetch succeeded`)
+        htmlBody = body
+      } else {
+        console.log(`[scrape:helix] direct fetch also failed (status=${directRes.status}, len=${body.length})`)
+      }
+    } catch (e) {
+      console.log(`[scrape:helix] direct fetch threw: ${e instanceof Error ? e.message : e}`)
+    }
+  }
+
+  if (!htmlBody) throw new Error('All ScraperAPI and direct fetch attempts failed for Helix page')
+
+  console.log(`[scrape:helix] ScraperAPI body (first 500 chars): ${htmlBody.slice(0, 500)}`)
+  // Re-wrap into a Response so the rest of the function can call res.text() / res.ok normally
+  res = new Response(htmlBody, { status: 200 })
   console.log(`[scrape:helix] Status: ${res.status}`)
   if (!res.ok) throw new Error(`HTML fetch failed: ${res.status}`)
   const html = await res.text()
