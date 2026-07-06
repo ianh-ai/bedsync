@@ -49,6 +49,7 @@ export default function BillingActions({
   const router = useRouter()
   const [loading, setLoading] = useState<string | null>(null)
   const [confirmUpgrade, setConfirmUpgrade] = useState<{ tier: string; label: string; price: string } | null>(null)
+  const [confirmCancel, setConfirmCancel] = useState(false)
 
   const isCanceling = planStatus === 'canceling'
   const endDate = currentPeriodEnd
@@ -103,8 +104,8 @@ export default function BillingActions({
     setLoading(null)
   }
 
-  async function handleCancel() {
-    if (!confirm('Cancel your subscription? You keep full access until the end of your billing period.')) return
+  async function handleCancelConfirmed() {
+    setConfirmCancel(false)
     setLoading('cancel')
     const result = await apiPost('/api/stripe/cancel')
     if (result.error) alert(result.error)
@@ -130,6 +131,36 @@ export default function BillingActions({
 
   return (
     <>
+      {/* Cancel confirmation modal */}
+      {confirmCancel && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="bg-white rounded-2xl shadow-xl p-6 max-w-sm w-full">
+            <h3 className="text-base font-bold text-gray-900 mb-2">
+              Cancel your subscription?
+            </h3>
+            <p className="text-sm text-gray-500 mb-6">
+              You&apos;ll keep full access until the end of your billing period.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={handleCancelConfirmed}
+                disabled={loading !== null}
+                className="flex-1 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold py-2.5 rounded-lg transition-colors disabled:opacity-60"
+              >
+                Confirm cancellation
+              </button>
+              <button
+                onClick={() => setConfirmCancel(false)}
+                disabled={loading !== null}
+                className="flex-1 border border-gray-200 text-gray-700 text-sm font-medium py-2.5 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-60"
+              >
+                Keep subscription
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Upgrade confirmation modal */}
       {confirmUpgrade && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
@@ -264,7 +295,7 @@ export default function BillingActions({
           </p>
         ) : (
           <button
-            onClick={handleCancel}
+            onClick={() => setConfirmCancel(true)}
             disabled={loading !== null}
             className="text-sm text-red-500 hover:text-red-700 hover:underline disabled:opacity-50"
           >
