@@ -1,5 +1,6 @@
 import { load } from 'cheerio'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { CATALOG } from '@/lib/catalog'
 
 export type ScrapedVariant = {
@@ -1847,7 +1848,7 @@ type SupabaseClient = Awaited<ReturnType<typeof createClient>>
 
 export async function runScrape(tracked_product_id: string, supabase: SupabaseClient): Promise<Response> {
   try {
-    const { data: product, error: productError } = await supabase
+    const { data: product, error: productError } = await createAdminClient()
       .from('tracked_products')
       .select('*')
       .eq('id', tracked_product_id)
