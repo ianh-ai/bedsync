@@ -2024,30 +2024,43 @@ export async function runScrape(tracked_product_id: string, supabase: SupabaseCl
     const catalogEntry = catalogBrand?.products.find(e => e.name.toLowerCase() === (product.label ?? '').toLowerCase())
     const apiProductName = catalogEntry?.apiProductName
 
+    const isHelix = brand.toLowerCase() === 'helix' || brand.toLowerCase() === 'birch'
+    const maxAttempts = isHelix ? 1 : 3
+
     let scraped: ScrapedVariant[] | null = null
     let lastScrapeError: string | null = null
-    for (let attempt = 1; attempt <= 3; attempt++) {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         scraped = await scrapeForBrand(brand, product.manufacturer_url, variantFilter, product.label ?? undefined, apiProductName)
         break
       } catch (err) {
         lastScrapeError = err instanceof Error ? err.message : String(err)
-        if (attempt < 3) {
-          console.log(`[scrape] attempt ${attempt}/3 after failure: ${lastScrapeError}`)
+        // Proxy timeouts and total fetch failures have no chance of succeeding on retry — bail immediately
+        const isFatal = lastScrapeError.includes('timed out') || lastScrapeError.includes('All ScraperAPI')
+        if (isFatal) {
+          console.log(`[scrape] fatal error, not retrying: ${lastScrapeError}`)
+          break
+        }
+        if (attempt < maxAttempts) {
+          console.log(`[scrape] attempt ${attempt}/${maxAttempts} after failure: ${lastScrapeError}`)
           await new Promise(r => setTimeout(r, 2000))
         } else {
-          console.error(`[scrape] Failed for brand="${brand}" after 3 attempts:`, err instanceof Error ? err.stack : err)
+          console.error(`[scrape] Failed for brand="${brand}" after ${maxAttempts} attempt(s):`, err instanceof Error ? err.stack : err)
         }
       }
     }
 
     if (scraped === null) {
+      const isHelixCloudflare = isHelix && (lastScrapeError?.includes('timed out') || lastScrapeError?.includes('All ScraperAPI') || lastScrapeError?.includes('fetch failed'))
+      const userError = isHelixCloudflare
+        ? 'Helix temporarily unavailable — Cloudflare is blocking scrapers. Try again later.'
+        : 'Unsupported brand or scrape failed'
       await supabase.from('tracked_products').update({
         scrape_status: 'error',
         scrape_error: lastScrapeError,
         scrape_attempted_at: now,
       }).eq('id', tracked_product_id)
-      return Response.json({ error: 'Unsupported brand or scrape failed', brand, detail: lastScrapeError }, { status: 400 })
+      return Response.json({ error: userError, brand, detail: lastScrapeError }, { status: 400 })
     }
 
     console.log(`[scrape] Extracted ${scraped.length} raw variants`)
