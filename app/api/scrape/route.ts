@@ -119,9 +119,9 @@ async function scrapeHelix(url: string): Promise<ScrapedVariant[]> {
   console.log(`[scrape:helix] Fetching HTML: ${targetUrl}`)
   let res: Response
   if (process.env.SCRAPER_API_KEY) {
-    const proxyUrl = `http://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&url=${encodeURIComponent(targetUrl)}&render=true&premium=true`
+    const proxyUrl = `http://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&url=${encodeURIComponent(targetUrl)}&render=true&ultra_premium=true`
     console.log(`[scrape:helix] ScraperAPI target URL: ${targetUrl}`)
-    console.log(`[scrape:helix] ScraperAPI proxy URL (key redacted): http://api.scraperapi.com?api_key=REDACTED&url=${encodeURIComponent(targetUrl)}&render=true&premium=true`)
+    console.log(`[scrape:helix] ScraperAPI proxy URL (key redacted): http://api.scraperapi.com?api_key=REDACTED&url=${encodeURIComponent(targetUrl)}&render=true&ultra_premium=true`)
     const rawRes = await fetch(proxyUrl)
     const bodyText = await rawRes.text()
     console.log(`[scrape:helix] ScraperAPI status: ${rawRes.status}`)
