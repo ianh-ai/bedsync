@@ -22,12 +22,12 @@ const UPGRADE_OPTIONS: Record<string, Array<{ tier: string; label: string; price
   business: [],
 }
 
-const DOWNGRADE_OPTIONS: Record<string, Array<{ tier: string; label: string; price: string }>> = {
+const DOWNGRADE_OPTIONS: Record<string, Array<{ tier: string; label: string; price: string; priceId: string }>> = {
   business: [
-    { tier: 'pro',     label: 'Downgrade to Pro',     price: '$99/mo' },
-    { tier: 'starter', label: 'Downgrade to Starter', price: '$49/mo' },
+    { tier: 'pro',     label: 'Downgrade to Pro',     price: '$99/mo', priceId: process.env.NEXT_PUBLIC_STRIPE_PRO_PRICE_ID     ?? '' },
+    { tier: 'starter', label: 'Downgrade to Starter', price: '$49/mo', priceId: process.env.NEXT_PUBLIC_STRIPE_STARTER_PRICE_ID ?? '' },
   ],
-  pro:      [{ tier: 'starter', label: 'Downgrade to Starter', price: '$49/mo' }],
+  pro:      [{ tier: 'starter', label: 'Downgrade to Starter', price: '$49/mo', priceId: process.env.NEXT_PUBLIC_STRIPE_STARTER_PRICE_ID ?? '' }],
   starter:  [],
 }
 
@@ -83,9 +83,9 @@ export default function BillingActions({
     setLoading(null)
   }
 
-  async function handleDowngrade(targetTier: string) {
+  async function handleDowngrade(targetTier: string, priceId: string) {
     setLoading(`downgrade-${targetTier}`)
-    const result = await apiPost('/api/stripe/downgrade', { newPriceId: PLAN_PRICE_IDS[targetTier] })
+    const result = await apiPost('/api/stripe/downgrade', { newPriceId: priceId })
     if (result.error) alert(result.error)
     else router.refresh()
     setLoading(null)
@@ -233,7 +233,7 @@ export default function BillingActions({
             {downgradeOptions.map(opt => (
               <button
                 key={opt.tier}
-                onClick={() => handleDowngrade(opt.tier)}
+                onClick={() => handleDowngrade(opt.tier, opt.priceId)}
                 disabled={loading !== null}
                 className="w-full text-left px-4 py-3 rounded-lg border border-gray-200 bg-gray-50 hover:bg-gray-100 text-sm font-medium text-gray-600 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
               >
