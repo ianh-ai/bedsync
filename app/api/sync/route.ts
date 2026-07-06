@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getPlanLimit } from '@/lib/plans'
 import { syncWooCommerce } from '@/lib/sync-woocommerce'
 import { rotateShopifyToken } from '@/lib/shopify-token-rotation'
 import { getValidShopifyToken } from '@/lib/shopify-token'
@@ -48,6 +49,23 @@ export async function runSync(
       store = storeData
     } else {
       console.log(`[sync] store override: ${store.shop_domain}`)
+    }
+
+    // Plan limit enforcement — block sync if user is over their brand limit
+    if (syncUserId) {
+      const admin = createAdminClient()
+      const [profileRes, brandsRes] = await Promise.all([
+        admin.from('profiles').select('plan_tier').eq('id', syncUserId).single(),
+        admin.from('tracked_products').select('brand').eq('user_id', syncUserId).is('deleted_at', null),
+      ])
+      const planTier = (profileRes.data?.plan_tier as string | null) ?? 'free'
+      const distinctBrands = new Set((brandsRes.data ?? []).map((r: { brand: string | null }) => r.brand).filter(Boolean))
+      const brandCount = distinctBrands.size
+      const brandLimit = getPlanLimit(planTier)
+      console.log(`[sync] plan check: tier=${planTier} brands=${brandCount}/${brandLimit === Infinity ? '∞' : brandLimit}`)
+      if (brandCount > brandLimit) {
+        return Response.json({ error: 'Plan limit exceeded. Remove brands to sync.' }, { status: 403 })
+      }
     }
 
     const productUserId = authUser?.id ?? storeOverride?.userId ?? ''

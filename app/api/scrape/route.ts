@@ -119,14 +119,24 @@ async function scrapeHelix(url: string): Promise<ScrapedVariant[]> {
   console.log(`[scrape:helix] Fetching HTML: ${targetUrl}`)
   let res: Response
   if (process.env.SCRAPER_API_KEY) {
-    const proxyUrl = `http://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&url=${encodeURIComponent(targetUrl)}&render=true&ultra_premium=true`
+    const ultraUrl = `http://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&url=${encodeURIComponent(targetUrl)}&render=true&ultra_premium=true`
     console.log(`[scrape:helix] ScraperAPI target URL: ${targetUrl}`)
     console.log(`[scrape:helix] ScraperAPI proxy URL (key redacted): http://api.scraperapi.com?api_key=REDACTED&url=${encodeURIComponent(targetUrl)}&render=true&ultra_premium=true`)
-    const rawRes = await fetch(proxyUrl)
-    const bodyText = await rawRes.text()
-    console.log(`[scrape:helix] ScraperAPI status: ${rawRes.status}`)
+    let rawRes = await fetch(ultraUrl)
+    let bodyText = await rawRes.text()
+    console.log(`[scrape:helix] ScraperAPI ultra_premium status: ${rawRes.status}, body length: ${bodyText.length}`)
+    if (!rawRes.ok || bodyText.length < 10_000) {
+      console.log(`[scrape:helix] ultra_premium blocked (status=${rawRes.status}, len=${bodyText.length}) — retrying with premium`)
+      const premiumUrl = `http://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&url=${encodeURIComponent(targetUrl)}&render=true&premium=true`
+      rawRes = await fetch(premiumUrl)
+      bodyText = await rawRes.text()
+      console.log(`[scrape:helix] ScraperAPI premium status: ${rawRes.status}, body length: ${bodyText.length}`)
+      if (!rawRes.ok) throw new Error(`ScraperAPI fetch failed: ${rawRes.status}`)
+      console.log(`[scrape:helix] fell back to premium`)
+    } else {
+      console.log(`[scrape:helix] ultra_premium succeeded`)
+    }
     console.log(`[scrape:helix] ScraperAPI body (first 500 chars): ${bodyText.slice(0, 500)}`)
-    if (!rawRes.ok) throw new Error(`ScraperAPI fetch failed: ${rawRes.status}`)
     // Re-wrap the already-consumed body so the rest of the function can call res.text() / res.ok normally
     res = new Response(bodyText, { status: rawRes.status, headers: rawRes.headers })
   } else {
