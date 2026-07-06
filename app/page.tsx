@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useRef, useCallback } from 'react'
+import React, { Suspense, useState, useEffect, useRef, useCallback } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
@@ -362,7 +362,7 @@ const BRAND_LOGOS = [
 
 const NAV_LINKS: [string, string][] = [['Features', '#features'], ['How it Works', '#how-it-works'], ['Featured Brands', '#featured-brands'], ['Pricing', '#pricing'], ['FAQ', '#faq']]
 
-export default function HomePage() {
+function HomeContent() {
   const searchParams = useSearchParams()
   const pricingMessage = searchParams.get('message')
 
@@ -927,5 +927,13 @@ export default function HomePage() {
 
       </div>
     </>
+  )
+}
+
+export default function HomePage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-white" />}>
+      <HomeContent />
+    </Suspense>
   )
 }
