@@ -2,7 +2,6 @@ export const dynamic = 'force-dynamic'
 
 import { createRouteClient } from '@/lib/supabase/route'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getPriceId } from '@/lib/plans'
 import stripe from '@/lib/stripe'
 
 const PRICE_TO_TIER: Record<string, string> = {
@@ -24,30 +23,38 @@ export async function POST(request: Request) {
 
     const { data: profile } = await admin
       .from('profiles')
-      .select('stripe_subscription_id, plan_tier')
+      .select('stripe_subscription_id, plan_tier, pending_plan_tier')
       .eq('id', user.id)
       .single()
+
+    console.log('downgrade called with:', {
+      newPriceId,
+      currentTier: profile?.plan_tier,
+      pendingTier: profile?.pending_plan_tier,
+    })
 
     const subscriptionId = profile?.stripe_subscription_id as string | null
     if (!subscriptionId) return Response.json({ error: 'No active subscription' }, { status: 400 })
 
     const subscription = await stripe.subscriptions.retrieve(subscriptionId)
-    const itemId = subscription.items.data[0].id
+    const itemId    = subscription.items.data[0].id
     const periodEnd = subscription.items.data[0].current_period_end
+
+    const newTier     = PRICE_TO_TIER[newPriceId] ?? 'starter'
+    const pendingDate = new Date(periodEnd * 1000).toISOString()
+
+    // Write pending fields BEFORE calling Stripe so the webhook sees them when
+    // customer.subscription.updated fires immediately after the update below.
+    await admin
+      .from('profiles')
+      .update({ pending_plan_tier: newTier, pending_plan_date: pendingDate })
+      .eq('id', user.id)
 
     await stripe.subscriptions.update(subscriptionId, {
       items: [{ id: itemId, price: newPriceId }],
       proration_behavior: 'none',
       billing_cycle_anchor: 'unchanged',
     })
-
-    const newTier = PRICE_TO_TIER[newPriceId] ?? 'starter'
-    const pendingDate = new Date(periodEnd * 1000).toISOString()
-
-    await admin
-      .from('profiles')
-      .update({ pending_plan_tier: newTier, pending_plan_date: pendingDate })
-      .eq('id', user.id)
 
     return Response.json({ success: true })
   } catch (err: unknown) {
