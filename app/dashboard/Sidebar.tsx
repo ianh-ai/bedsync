@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import SignOutButton from './SignOutButton'
@@ -86,7 +87,7 @@ export default function Sidebar({ email, planTier, planStatus, brandCount, brand
   return (
     <aside className="w-60 bg-white border-r border-gray-200 flex flex-col shrink-0">
       <div className="px-5 py-5 border-b border-gray-100">
-        <span className="text-indigo-600 font-bold text-base tracking-tight">BedSync</span>
+        <Image src="/images/wordmark.png" alt="BedSync" height={32} width={120} />
       </div>
 
       <nav className="flex-1 px-3 py-4 space-y-0.5">

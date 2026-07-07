@@ -457,7 +457,7 @@ function HomeContent() {
         {/* NAV */}
         <header className={`fixed inset-x-0 top-0 z-50 transition-all duration-300 ${scrolled ? 'bg-white/95 backdrop-blur-sm shadow-sm border-b border-gray-100' : 'bg-transparent'}`}>
           <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-            <span className="text-lg font-bold text-gray-900">BedSync</span>
+            <Image src="/images/wordmark.png" alt="BedSync" height={32} width={120} />
 
             <nav className="hidden md:flex items-center gap-8">
               {NAV_LINKS.map(([label, href]) => (
