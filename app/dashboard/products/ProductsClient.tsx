@@ -24,6 +24,20 @@ type Product = {
 }
 
 type SyncStatus = 'idle' | 'checking' | 'done' | 'error'
+type SyncAllStatus = 'idle' | 'running' | 'done' | 'error'
+
+const PRODUCT_COOLDOWN_MS = 8 * 60 * 60 * 1000   // 8 hours
+const SYNC_ALL_COOLDOWN_MS = 24 * 60 * 60 * 1000  // 24 hours
+
+function getNextSyncTime(lastSyncedAt: string | null, cooldownMs: number): Date | null {
+  if (!lastSyncedAt) return null
+  const nextAt = new Date(new Date(lastSyncedAt).getTime() + cooldownMs)
+  return nextAt > new Date() ? nextAt : null
+}
+
+function fmtTime(d: Date): string {
+  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+}
 type ChartPoint = { time: string; [size: string]: string | number }
 
 type EditForm = {
@@ -64,10 +78,12 @@ export default function ProductsClient({
   initialProducts,
   storePlatform,
   overLimit = false,
+  syncAllLastRunAt = null,
 }: {
   initialProducts: Product[]
   storePlatform: string | null
   overLimit?: boolean
+  syncAllLastRunAt?: string | null
 }) {
   const [products, setProducts] = useState(initialProducts)
   const [search, setSearch] = useState('')
@@ -94,8 +110,16 @@ export default function ProductsClient({
   const [editSaving, setEditSaving] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
 
+  const [syncAllStatus, setSyncAllStatus] = useState<SyncAllStatus>('idle')
+  const [syncAllLastRun, setSyncAllLastRun] = useState<string | null>(syncAllLastRunAt)
+
   const router = useRouter()
   const anyChecked = selectedIds.size > 0
+
+  const syncAllCooldownUntil = useMemo(
+    () => getNextSyncTime(syncAllLastRun, SYNC_ALL_COOLDOWN_MS),
+    [syncAllLastRun]
+  )
 
   // Load price history when stats modal opens
   useEffect(() => {
@@ -224,6 +248,33 @@ export default function ProductsClient({
     }
   }
 
+  async function handleSyncAll() {
+    if (syncAllCooldownUntil || syncAllStatus === 'running') return
+    setSyncAllStatus('running')
+    try {
+      const res = await fetch('/api/sync-all', { method: 'POST' })
+      const body = await res.json().catch(() => ({})) as { next_sync_at?: string }
+      if (res.ok) {
+        const now = new Date().toISOString()
+        setSyncAllLastRun(now)
+        setProducts(ps => ps.map(p => ({ ...p, last_synced_at: now })))
+        setSyncAllStatus('done')
+        setTimeout(() => setSyncAllStatus('idle'), 3000)
+        router.refresh()
+      } else if (res.status === 429 && body.next_sync_at) {
+        // Already in cooldown on the server — compute last run from next_sync_at
+        setSyncAllLastRun(new Date(new Date(body.next_sync_at).getTime() - SYNC_ALL_COOLDOWN_MS).toISOString())
+        setSyncAllStatus('idle')
+      } else {
+        setSyncAllStatus('error')
+        setTimeout(() => setSyncAllStatus('idle'), 3000)
+      }
+    } catch {
+      setSyncAllStatus('error')
+      setTimeout(() => setSyncAllStatus('idle'), 3000)
+    }
+  }
+
   function openEdit(product: Product) {
     setEditForm({
       label: product.label ?? '',
@@ -306,8 +357,9 @@ export default function ProductsClient({
 
   return (
     <>
-      {/* Search + Brand filter */}
-      <div style={{marginBottom: 12}}>
+      {/* Search + Brand filter + Sync All */}
+      <div className="flex items-start justify-between" style={{marginBottom: 12}}>
+      <div style={{flex: 1}}>
         <div className="relative" style={{maxWidth: 240, marginBottom: 8}}>
           <svg
             className="absolute top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
@@ -352,6 +404,39 @@ export default function ProductsClient({
             ))}
           </div>
         )}
+      </div>
+      <div style={{paddingLeft: 12, paddingTop: 1}}>
+        <button
+          onClick={handleSyncAll}
+          disabled={!!syncAllCooldownUntil || syncAllStatus === 'running' || overLimit}
+          title={
+            syncAllCooldownUntil ? `Next sync available at ${fmtTime(syncAllCooldownUntil)}` :
+            overLimit ? 'Remove brands to sync' : 'Sync all products'
+          }
+          className={
+            syncAllStatus === 'done'
+              ? 'inline-flex items-center font-medium rounded-md border transition-colors bg-green-50 text-green-700 border-green-200 disabled:opacity-50'
+              : syncAllStatus === 'error'
+              ? 'inline-flex items-center font-medium rounded-md border transition-colors bg-red-50 text-red-600 border-red-200 disabled:opacity-50'
+              : (syncAllCooldownUntil || overLimit)
+              ? 'inline-flex items-center font-medium rounded-md border transition-colors border-gray-200 text-gray-400 bg-gray-50 cursor-not-allowed'
+              : 'inline-flex items-center font-medium rounded-md border transition-colors border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50'
+          }
+          style={{fontSize: 11, padding: '4px 10px', gap: 5}}
+        >
+          {syncAllStatus === 'running' ? (
+            <svg className="animate-spin" style={{width: 12, height: 12}} fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+            </svg>
+          ) : (
+            <svg style={{width: 12, height: 12}} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          )}
+          {syncAllStatus === 'done' ? 'Synced' : syncAllStatus === 'error' ? 'Error' : syncAllStatus === 'running' ? 'Syncing…' : 'Sync All'}
+        </button>
+      </div>
       </div>
 
       {/* Table */}
@@ -416,6 +501,8 @@ export default function ProductsClient({
                         const syncStatus = syncStates[product.id] ?? 'idle'
                         const isDeleteConfirming = deleteId === product.id
                         const isSelected = selectedIds.has(product.id)
+                        const productCooldownUntil = getNextSyncTime(product.last_synced_at, PRODUCT_COOLDOWN_MS)
+                        const inCooldown = productCooldownUntil !== null
 
                         return (
                           <tr key={product.id} className="group hover:bg-gray-50 transition-colors border-t border-gray-100">
@@ -460,8 +547,11 @@ export default function ProductsClient({
                                   <>
                                     <button
                                       onClick={() => handleSync(product.id)}
-                                      disabled={syncStatus !== 'idle' || overLimit}
-                                      title={overLimit ? 'Remove brands to sync' : 'Sync prices'}
+                                      disabled={syncStatus !== 'idle' || overLimit || inCooldown}
+                                      title={
+                                        inCooldown ? `Next sync available at ${fmtTime(productCooldownUntil!)}` :
+                                        overLimit ? 'Remove brands to sync' : 'Sync prices'
+                                      }
                                       className={
                                         syncStatus === 'done'
                                           ? 'inline-flex items-center font-medium rounded-md border transition-colors bg-green-50 text-green-700 border-green-200 disabled:opacity-50'

@@ -19,7 +19,7 @@ const SIZE_TO_VARIANT_TITLE: Record<string, string[]> = {
 export async function runSync(
   tracked_product_id: string,
   supabase: SupabaseClient,
-  storeOverride?: { shop_domain: string; access_token: string; userId?: string }
+  storeOverride?: { shop_domain: string; access_token: string; userId?: string; platform?: string | null; wc_consumer_key?: string | null; wc_consumer_secret?: string | null }
 ): Promise<Response> {
   try {
     type StoreRecord = { shop_domain: string; access_token: string; platform?: string | null; wc_consumer_key?: string | null; wc_consumer_secret?: string | null }
@@ -83,6 +83,17 @@ export async function runSync(
 
     if ((product as { sync_paused?: boolean }).sync_paused) {
       return Response.json({ skipped: true, reason: 'Brand sync paused — over plan limit' })
+    }
+
+    // Per-product 8-hour cooldown — only enforced after successful syncs
+    const lastSynced = product.last_synced_at as string | null
+    if (lastSynced) {
+      const elapsed = Date.now() - new Date(lastSynced).getTime()
+      if (elapsed < 8 * 60 * 60 * 1000) {
+        const nextSyncAt = new Date(new Date(lastSynced).getTime() + 8 * 60 * 60 * 1000).toISOString()
+        console.log(`[sync] product ${tracked_product_id} on cooldown until ${nextSyncAt}`)
+        return Response.json({ skipped: true, reason: 'cooldown', next_sync_at: nextSyncAt })
+      }
     }
 
     // Diagnostic: log the exact key and a sample unfiltered row to verify schema/values

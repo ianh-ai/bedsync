@@ -3,79 +3,99 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { runScrape } from '../scrape/route'
 import { runSync } from '../sync/route'
 
-export async function GET() {
-  try {
-    const supabase = await createClient()
+export const runtime = 'nodejs'
+export const maxDuration = 300
 
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
+const SYNC_ALL_COOLDOWN_MS = 24 * 60 * 60 * 1000
 
-    const admin = createAdminClient()
+export async function POST() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const { data: products, error: productsError } = await admin
-      .from('tracked_products')
-      .select('id, label, shopify_product_title, sync_paused')
-      .eq('user_id', user.id)
-      .is('deleted_at', null)
-      .order('created_at', { ascending: false })
+  const admin = createAdminClient()
 
-    if (productsError) {
-      console.error('[sync-all] failed to fetch products:', productsError.message)
-      return Response.json({ error: productsError.message }, { status: 500 })
+  // Check 24-hour cooldown
+  const { data: profile } = await admin
+    .from('profiles')
+    .select('sync_all_last_run_at')
+    .eq('id', user.id)
+    .single()
+
+  const lastRun = (profile?.sync_all_last_run_at as string | null) ?? null
+  if (lastRun) {
+    const elapsed = Date.now() - new Date(lastRun).getTime()
+    if (elapsed < SYNC_ALL_COOLDOWN_MS) {
+      const nextSyncAt = new Date(new Date(lastRun).getTime() + SYNC_ALL_COOLDOWN_MS).toISOString()
+      return Response.json({ error: 'Cooldown active', next_sync_at: nextSyncAt }, { status: 429 })
     }
+  }
 
-    if (!products || products.length === 0) {
-      return Response.json({ total: 0, succeeded: 0, failed: 0, skipped: 0, paused: 0, results: [] })
-    }
+  // Fetch the user's store (including WooCommerce credentials)
+  const { data: store } = await admin
+    .from('shopify_stores')
+    .select('id, shop_domain, access_token, platform, wc_consumer_key, wc_consumer_secret')
+    .eq('user_id', user.id)
+    .single()
 
-    const results: Array<{ product_name: string; status: 'ok' | 'error' | 'paused'; error?: string; skipped?: string[] }> = []
-    let succeeded = 0
-    let failed = 0
-    let totalSkipped = 0
-    let totalPaused = 0
+  if (!store) return Response.json({ error: 'No store connected' }, { status: 400 })
 
-    for (const product of products) {
-      const name = (product.label as string | null) || (product.shopify_product_title as string | null) || product.id
+  // Fetch all active, unpaused products
+  const { data: products } = await admin
+    .from('tracked_products')
+    .select('id, label, shopify_product_title')
+    .eq('user_id', user.id)
+    .is('deleted_at', null)
+    .eq('sync_paused', false)
 
-      if ((product as { sync_paused?: boolean }).sync_paused) {
-        results.push({ product_name: name, status: 'paused' })
-        totalPaused++
+  if (!products?.length) {
+    await admin.from('profiles').update({ sync_all_last_run_at: new Date().toISOString() }).eq('id', user.id)
+    return Response.json({ synced: 0, skipped: 0, failed: 0, total: 0 })
+  }
+
+  let synced = 0, skipped = 0, failed = 0
+  const storeOverride = {
+    shop_domain: store.shop_domain as string,
+    access_token: store.access_token as string,
+    platform: store.platform as string | null,
+    wc_consumer_key: store.wc_consumer_key as string | null,
+    wc_consumer_secret: store.wc_consumer_secret as string | null,
+    userId: user.id,
+  }
+
+  for (const product of products) {
+    const name = (product.label as string | null) || (product.shopify_product_title as string | null) || product.id
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const scrapeRes = await runScrape(product.id, admin as any)
+      if (!scrapeRes.ok) {
+        console.log(`[sync-all] "${name}" scrape failed: ${scrapeRes.status}`)
+        failed++
         continue
       }
 
-      try {
-        const scrapeRes = await runScrape(product.id, supabase)
-        if (!scrapeRes.ok) {
-          const body = await scrapeRes.json().catch(() => ({}))
-          const msg = (body as Record<string, string>).error ?? `scrape HTTP ${scrapeRes.status}`
-          throw new Error(`scrape HTTP ${scrapeRes.status}: ${msg}`)
-        }
-
-        const syncRes = await runSync(product.id, supabase)
-        if (!syncRes.ok) {
-          const body = await syncRes.json().catch(() => ({}))
-          const msg = (body as Record<string, string>).error ?? `sync HTTP ${syncRes.status}`
-          throw new Error(`sync HTTP ${syncRes.status}: ${msg}`)
-        }
-        const syncBody = await syncRes.json().catch(() => ({})) as { skipped?: string[] }
-        const productSkipped = Array.isArray(syncBody.skipped) ? syncBody.skipped : []
-        totalSkipped += productSkipped.length
-
-        results.push({ product_name: name, status: 'ok', skipped: productSkipped })
-        succeeded++
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        console.error(`[sync-all] failed for "${name}":`, message)
-        results.push({ product_name: name, status: 'error', error: message })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const syncRes = await runSync(product.id, admin as any, storeOverride)
+      const syncBody = await syncRes.json().catch(() => ({})) as { skipped?: boolean; reason?: string }
+      if (!syncRes.ok) {
+        console.log(`[sync-all] "${name}" sync failed: ${syncRes.status}`)
         failed++
+      } else if (syncBody.skipped) {
+        console.log(`[sync-all] "${name}" skipped (${syncBody.reason ?? 'unknown'})`)
+        skipped++
+      } else {
+        console.log(`[sync-all] "${name}" ok`)
+        synced++
       }
+    } catch (err) {
+      console.error(`[sync-all] "${name}" threw:`, err instanceof Error ? err.message : err)
+      failed++
     }
-
-    console.log(`[sync-all] done — ${succeeded}/${products.length} succeeded, ${totalSkipped} skipped (guardrail), ${totalPaused} paused, ${failed} failed`)
-    return Response.json({ total: products.length, succeeded, failed, skipped: totalSkipped, paused: totalPaused, results })
-  } catch (err) {
-    console.error('[sync-all] unhandled error:', err instanceof Error ? err.stack : err)
-    const message = err instanceof Error ? err.message : String(err)
-    return Response.json({ error: message }, { status: 500 })
   }
+
+  // Update cooldown timestamp once the run finishes
+  await admin.from('profiles').update({ sync_all_last_run_at: new Date().toISOString() }).eq('id', user.id)
+
+  console.log(`[sync-all] done — synced=${synced} skipped=${skipped} failed=${failed} total=${products.length}`)
+  return Response.json({ synced, skipped, failed, total: products.length })
 }

@@ -12,11 +12,14 @@ export default async function ProductsPage() {
 
   const admin = createAdminClient()
 
-  const [{ data: store }, profile, brandCount] = await Promise.all([
+  const [{ data: store }, profile, brandCount, { data: profileExtra }] = await Promise.all([
     admin.from('shopify_stores').select('id, platform').eq('user_id', user!.id).single(),
     getUserProfile(user!.id),
     getBrandCount(user!.id),
+    admin.from('profiles').select('sync_all_last_run_at').eq('id', user!.id).single(),
   ])
+
+  const syncAllLastRunAt = (profileExtra?.sync_all_last_run_at as string | null) ?? null
 
   const planTier   = profile?.plan_tier ?? 'free'
   const brandLimit = getPlanLimit(planTier)
@@ -127,6 +130,7 @@ export default async function ProductsPage() {
         initialProducts={productsWithQueen as Parameters<typeof ProductsClient>[0]['initialProducts']}
         storePlatform={store?.platform ?? 'shopify'}
         overLimit={overLimit}
+        syncAllLastRunAt={syncAllLastRunAt}
       />
     </div>
   )
