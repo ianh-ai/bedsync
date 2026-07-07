@@ -21,6 +21,7 @@ export default async function ProductsPage() {
   const planTier   = profile?.plan_tier ?? 'free'
   const brandLimit = getPlanLimit(planTier)
   const atLimit    = brandLimit !== Infinity && brandCount >= brandLimit
+  const overLimit  = brandLimit !== Infinity && brandCount > brandLimit
   const limitLabel = brandLimit === Infinity ? '∞' : String(brandLimit)
 
   const { data: products, error: productsError } = await admin
@@ -125,6 +126,7 @@ export default async function ProductsPage() {
       <ProductsClient
         initialProducts={productsWithQueen as Parameters<typeof ProductsClient>[0]['initialProducts']}
         storePlatform={store?.platform ?? 'shopify'}
+        overLimit={overLimit}
       />
     </div>
   )

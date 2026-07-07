@@ -63,9 +63,11 @@ function XIcon() {
 export default function ProductsClient({
   initialProducts,
   storePlatform,
+  overLimit = false,
 }: {
   initialProducts: Product[]
   storePlatform: string | null
+  overLimit?: boolean
 }) {
   const [products, setProducts] = useState(initialProducts)
   const [search, setSearch] = useState('')
@@ -458,8 +460,8 @@ export default function ProductsClient({
                                   <>
                                     <button
                                       onClick={() => handleSync(product.id)}
-                                      disabled={syncStatus !== 'idle'}
-                                      title="Sync prices"
+                                      disabled={syncStatus !== 'idle' || overLimit}
+                                      title={overLimit ? 'Remove brands to sync' : 'Sync prices'}
                                       className={
                                         syncStatus === 'done'
                                           ? 'inline-flex items-center font-medium rounded-md border transition-colors bg-green-50 text-green-700 border-green-200 disabled:opacity-50'

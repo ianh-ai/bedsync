@@ -142,25 +142,27 @@ async function scrapeHelix(url: string): Promise<ScrapedVariant[]> {
   if (process.env.SCRAPER_API_KEY) {
     console.log(`[scrape:helix] ScraperAPI target URL: ${targetUrl}`)
 
-    // Attempt 1: render=false&ultra_premium=true — no headless browser, fast, 10s timeout
-    // render=false routes through a residential proxy only; Helix's pricing JSON is
-    // server-side rendered into the initial HTML so Approach 2 should work without JS.
-    try {
-      const renderFalseUrl = `http://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&url=${encodeURIComponent(targetUrl)}&render=false&premium=true`
-      console.log(`[scrape:helix] attempt 1: render=false&premium=true`)
-      const { ok, status, body } = await scraperFetch(renderFalseUrl, 'render=false premium', 10_000)
-      console.log(`[scrape:helix] render=false premium status: ${status}, body length: ${body.length}`)
-      const blobFound = body.includes('"discounted_price":')
-      console.log(`[scrape:helix] render=false: discounted_price blob ${blobFound ? 'found' : 'not found'}`)
-      if (ok && body.length >= 5_000) {
-        console.log(`[scrape:helix] render=false premium succeeded`)
-        htmlBody = body
-        renderFalseBlobFound = blobFound
-      } else {
-        console.log(`[scrape:helix] render=false premium blocked (status=${status}, len=${body.length}) — falling through`)
+    // Attempt 1: render=false&premium=true — up to 3 tries, each with a fresh proxy IP
+    // render=false is fast (no headless browser); Helix's pricing JSON is server-side
+    // rendered into the initial HTML so Approach 2 works without JS execution.
+    const renderFalseUrl = `http://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&url=${encodeURIComponent(targetUrl)}&render=false&premium=true`
+    for (let rf = 1; rf <= 3 && !htmlBody; rf++) {
+      console.log(`[scrape:helix] render=false attempt ${rf}/3`)
+      try {
+        const { ok, status, body } = await scraperFetch(renderFalseUrl, `render=false premium (${rf}/3)`, 10_000)
+        console.log(`[scrape:helix] render=false attempt ${rf}/3: status=${status}, len=${body.length}`)
+        const blobFound = body.includes('"discounted_price":')
+        console.log(`[scrape:helix] render=false: discounted_price blob ${blobFound ? 'found' : 'not found'}`)
+        if (ok && body.length >= 5_000) {
+          console.log(`[scrape:helix] render=false premium succeeded on attempt ${rf}/3`)
+          htmlBody = body
+          renderFalseBlobFound = blobFound
+        } else {
+          console.log(`[scrape:helix] render=false attempt ${rf}/3 blocked (status=${status}, len=${body.length})${rf < 3 ? ' — retrying' : ' — falling through'}`)
+        }
+      } catch {
+        console.log(`[scrape:helix] render=false attempt ${rf}/3 threw${rf < 3 ? ' — retrying' : ' — falling through'}`)
       }
-    } catch {
-      console.log(`[scrape:helix] render=false premium threw — falling through`)
     }
 
     // Attempt 2: render=true&ultra_premium=true — full JS render, 25s timeout

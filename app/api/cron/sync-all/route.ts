@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getPlanLimit } from '@/lib/plans'
 import { runScrape } from '../../scrape/route'
 import { runSync } from '../../sync/route'
 
@@ -61,6 +62,20 @@ export async function GET(request: Request) {
       console.log(`[cron:sync-all] ${store.shop_domain}: skipping (schedule=${schedule}, dayOfWeek=${dayOfWeek}, dayOfMonth=${dayOfMonth})`)
       results.push({ store: store.shop_domain, skipped: true, reason: `not due (${schedule})` })
       continue
+    }
+
+    // Plan limit check — skip this user entirely if they're over their brand limit
+    const { data: profileData } = await admin.from('profiles').select('plan_tier').eq('id', store.user_id).single()
+    const planTier = (profileData?.plan_tier as string | null) ?? 'free'
+    const brandLimit = getPlanLimit(planTier)
+    if (brandLimit !== Infinity) {
+      const { data: brandRows } = await admin.from('tracked_products').select('brand').eq('user_id', store.user_id).is('deleted_at', null)
+      const brandCount = new Set((brandRows ?? []).map((r: { brand: string | null }) => r.brand).filter(Boolean)).size
+      if (brandCount > brandLimit) {
+        console.log(`[auto-sync] skipping userId=${store.user_id} over brand limit (${brandCount}/${brandLimit})`)
+        results.push({ store: store.shop_domain, skipped: true, reason: 'over brand limit' })
+        continue
+      }
     }
 
     const { data: products } = await admin
