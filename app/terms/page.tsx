@@ -164,15 +164,6 @@ export default function TermsPage() {
             <p>These Terms, together with our Privacy Policy, constitute the entire agreement between you and BedSync regarding your use of the Service and supersede any prior agreements.</p>
           </section>
 
-          <section>
-            <h2 className="text-base font-semibold text-gray-900 mb-3">18. Contact Us</h2>
-            <p>If you have questions about these Terms, contact us at:</p>
-            <p className="mt-2">
-              <strong>Email:</strong> niteclanisdabest127@gmail.com<br />
-              <strong>Service:</strong> BedSync (bedsync.app)
-            </p>
-          </section>
-
           <p className="text-xs text-gray-400 pt-4 border-t border-gray-200">
             These Terms and Conditions were last updated on July 7, 2026.
           </p>
