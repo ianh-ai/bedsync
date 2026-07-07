@@ -132,6 +132,16 @@ export default function PrivacyPage() {
             <p>We may update this Privacy Policy from time to time. We will notify you of material changes by posting the new policy on this page and updating the "Last Updated" date. Your continued use of the Service after changes are posted constitutes your acceptance of the updated policy.</p>
           </section>
 
+          <section>
+            <h2 className="text-base font-semibold text-gray-900 mb-3">12. Contact Us</h2>
+            <p className="mb-2">If you have questions or concerns about this Privacy Policy, contact us at:</p>
+            <p>
+              <strong>Email:</strong>{' '}
+              <a href="mailto:bedsyncsupport@gmail.com" className="text-blue-600 hover:underline">bedsyncsupport@gmail.com</a><br />
+              <strong>Service:</strong> BedSync (bedsync.app)
+            </p>
+          </section>
+
           <p className="text-xs text-gray-400 pt-4 border-t border-gray-200">
             This Privacy Policy was last updated on July 7, 2026.
           </p>

@@ -41,7 +41,8 @@ export default function DmcaPage() {
             </ol>
             <p className="mt-4">Send your DMCA notice to:</p>
             <p className="mt-2 text-gray-800">
-              <strong>Email:</strong> niteclanisdabest127@gmail.com<br />
+              <strong>Email:</strong>{' '}
+              <a href="mailto:bedsyncsupport@gmail.com" className="text-blue-600 hover:underline">bedsyncsupport@gmail.com</a><br />
               <strong>Subject line:</strong> DMCA Takedown Notice
             </p>
           </section>
@@ -72,6 +73,16 @@ export default function DmcaPage() {
           <section>
             <h2 className="text-base font-semibold text-gray-900 mb-3">Repeat Infringers</h2>
             <p>BedSync reserves the right to terminate accounts of users who are found to be repeat infringers of intellectual property rights.</p>
+          </section>
+
+          <section>
+            <h2 className="text-base font-semibold text-gray-900 mb-3">Contact</h2>
+            <p className="mb-2">For all DMCA-related inquiries:</p>
+            <p>
+              <strong>Email:</strong>{' '}
+              <a href="mailto:bedsyncsupport@gmail.com" className="text-blue-600 hover:underline">bedsyncsupport@gmail.com</a><br />
+              <strong>Service:</strong> BedSync (bedsync.app)
+            </p>
           </section>
 
           <p className="text-xs text-gray-400 pt-4 border-t border-gray-200">
