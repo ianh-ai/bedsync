@@ -118,17 +118,17 @@ async function scrapeHelix(url: string): Promise<ScrapedVariant[]> {
   const targetUrl = url
   console.log(`[scrape:helix] Fetching HTML: ${targetUrl}`)
   let res: Response
-  // Helper: fetch a ScraperAPI URL with a 25s abort timeout
-  async function scraperFetch(scraperUrl: string, label: string): Promise<{ ok: boolean; status: number; body: string }> {
+  // Helper: fetch a ScraperAPI URL with a configurable abort timeout
+  async function scraperFetch(scraperUrl: string, label: string, timeoutMs: number): Promise<{ ok: boolean; status: number; body: string }> {
     const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 25_000)
+    const timeout = setTimeout(() => controller.abort(), timeoutMs)
     try {
       const r = await fetch(scraperUrl, { signal: controller.signal })
       const body = await r.text()
       return { ok: r.ok, status: r.status, body }
     } catch (e) {
       if (e instanceof Error && e.name === 'AbortError') {
-        console.log(`[scrape:helix] ${label} timed out after 25s`)
+        console.log(`[scrape:helix] ${label} timed out after ${timeoutMs / 1000}s`)
       }
       throw e
     } finally {
@@ -137,40 +137,65 @@ async function scrapeHelix(url: string): Promise<ScrapedVariant[]> {
   }
 
   let htmlBody: string | null = null
+  let renderFalseBlobFound = false
 
   if (process.env.SCRAPER_API_KEY) {
     console.log(`[scrape:helix] ScraperAPI target URL: ${targetUrl}`)
 
-    // Attempt 1: ultra_premium
+    // Attempt 1: render=false&ultra_premium=true — no headless browser, fast, 10s timeout
+    // render=false routes through a residential proxy only; Helix's pricing JSON is
+    // server-side rendered into the initial HTML so Approach 2 should work without JS.
     try {
-      const ultraUrl = `http://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&url=${encodeURIComponent(targetUrl)}&render=true&ultra_premium=true`
-      console.log(`[scrape:helix] ScraperAPI proxy URL (key redacted): http://api.scraperapi.com?api_key=REDACTED&url=${encodeURIComponent(targetUrl)}&render=true&ultra_premium=true`)
-      const { ok, status, body } = await scraperFetch(ultraUrl, 'ultra_premium')
-      console.log(`[scrape:helix] ScraperAPI ultra_premium status: ${status}, body length: ${body.length}`)
-      if (ok && body.length >= 10_000) {
-        console.log(`[scrape:helix] ultra_premium succeeded`)
+      const renderFalseUrl = `http://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&url=${encodeURIComponent(targetUrl)}&render=false&premium=true`
+      console.log(`[scrape:helix] attempt 1: render=false&premium=true`)
+      const { ok, status, body } = await scraperFetch(renderFalseUrl, 'render=false premium', 10_000)
+      console.log(`[scrape:helix] render=false premium status: ${status}, body length: ${body.length}`)
+      const blobFound = body.includes('"discounted_price":')
+      console.log(`[scrape:helix] render=false: discounted_price blob ${blobFound ? 'found' : 'not found'}`)
+      if (ok && body.length >= 5_000) {
+        console.log(`[scrape:helix] render=false premium succeeded`)
         htmlBody = body
+        renderFalseBlobFound = blobFound
       } else {
-        console.log(`[scrape:helix] ultra_premium blocked (status=${status}, len=${body.length}) — retrying with premium`)
+        console.log(`[scrape:helix] render=false premium blocked (status=${status}, len=${body.length}) — falling through`)
       }
     } catch {
-      console.log(`[scrape:helix] ultra_premium threw — retrying with premium`)
+      console.log(`[scrape:helix] render=false premium threw — falling through`)
     }
 
-    // Attempt 2: premium fallback
+    // Attempt 2: render=true&ultra_premium=true — full JS render, 25s timeout
+    if (!htmlBody) {
+      try {
+        const ultraUrl = `http://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&url=${encodeURIComponent(targetUrl)}&render=true&ultra_premium=true`
+        console.log(`[scrape:helix] attempt 2: render=true&ultra_premium=true`)
+        const { ok, status, body } = await scraperFetch(ultraUrl, 'render=true ultra_premium', 25_000)
+        console.log(`[scrape:helix] render=true ultra_premium status: ${status}, body length: ${body.length}`)
+        if (ok && body.length >= 10_000) {
+          console.log(`[scrape:helix] render=true ultra_premium succeeded`)
+          htmlBody = body
+        } else {
+          console.log(`[scrape:helix] render=true ultra_premium blocked (status=${status}, len=${body.length}) — falling through`)
+        }
+      } catch {
+        console.log(`[scrape:helix] render=true ultra_premium threw — falling through`)
+      }
+    }
+
+    // Attempt 3: render=true&premium=true — 25s timeout
     if (!htmlBody) {
       try {
         const premiumUrl = `http://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&url=${encodeURIComponent(targetUrl)}&render=true&premium=true`
-        const { ok, status, body } = await scraperFetch(premiumUrl, 'premium')
-        console.log(`[scrape:helix] ScraperAPI premium status: ${status}, body length: ${body.length}`)
+        console.log(`[scrape:helix] attempt 3: render=true&premium=true`)
+        const { ok, status, body } = await scraperFetch(premiumUrl, 'render=true premium', 25_000)
+        console.log(`[scrape:helix] render=true premium status: ${status}, body length: ${body.length}`)
         if (ok && body.length >= 10_000) {
-          console.log(`[scrape:helix] fell back to premium`)
+          console.log(`[scrape:helix] fell back to render=true premium`)
           htmlBody = body
         } else {
-          console.log(`[scrape:helix] premium also blocked (status=${status}, len=${body.length})`)
+          console.log(`[scrape:helix] render=true premium also blocked (status=${status}, len=${body.length})`)
         }
       } catch {
-        console.log(`[scrape:helix] premium threw`)
+        console.log(`[scrape:helix] render=true premium threw`)
       }
     }
   }
@@ -212,6 +237,8 @@ async function scrapeHelix(url: string): Promise<ScrapedVariant[]> {
   const $ = load(html)
 
   // --- Approach 1: buy-box Livewire component ---
+  // Skipped when render=false already delivered the discounted_price blob.
+  if (!renderFalseBlobFound) {
   const wireMatches = [...html.matchAll(/wire:initial-data="([^"]+)"/g)]
   console.log(`[scrape:helix] Found ${wireMatches.length} wire:initial-data attributes`)
 
@@ -320,6 +347,7 @@ async function scrapeHelix(url: string): Promise<ScrapedVariant[]> {
     console.log(`[scrape:helix] buy-box yielded no multi-size data — falling through to Approach 3`)
     break
   }
+  } // end !renderFalseBlobFound
 
   // --- Approach 2: Embedded variants JSON with discounted_price field ---
   // Helix embeds a full variants array in the page. Each element contains:
