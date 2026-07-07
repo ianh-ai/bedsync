@@ -76,7 +76,7 @@ export default async function ProductsPage() {
               <p className="text-xs text-gray-500 mb-1">{brandCount} of {limitLabel} brand slots used</p>
               <div className="w-40 h-1.5 bg-gray-200 rounded-full overflow-hidden">
                 <div
-                  className={`h-full rounded-full transition-all ${atLimit ? 'bg-red-500' : 'bg-indigo-500'}`}
+                  className={`h-full rounded-full transition-all ${atLimit ? 'bg-red-500' : 'bg-blue-500'}`}
                   style={{ width: `${usedPct}%` }}
                 />
               </div>
@@ -101,7 +101,7 @@ export default async function ProductsPage() {
         ) : (
           <Link
             href="/dashboard/add"
-            className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+            className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />

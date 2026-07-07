@@ -3,15 +3,8 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
-}
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-
-  /* BedSync brand purple — overrides Tailwind's built-in blue scale */
+  /* BedSync brand purple — overrides blue and indigo across the entire app */
   --color-blue-50: #F5F0FD;
   --color-blue-100: #EDE6FA;
   --color-blue-200: #D9CEFF;
@@ -23,6 +16,24 @@
   --color-blue-800: #5A2E9A;
   --color-blue-900: #3D1D6E;
   --color-blue-950: #260D4A;
+  --color-indigo-50: #F5F0FD;
+  --color-indigo-100: #EDE6FA;
+  --color-indigo-200: #D9CEFF;
+  --color-indigo-300: #C0A8F0;
+  --color-indigo-400: #A97DE8;
+  --color-indigo-500: #9865E0;
+  --color-indigo-600: #844CDA;
+  --color-indigo-700: #6B3AB5;
+  --color-indigo-800: #5A2E9A;
+  --color-indigo-900: #3D1D6E;
+  --color-indigo-950: #260D4A;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
 }
 
 @media (prefers-color-scheme: dark) {

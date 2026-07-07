@@ -52,7 +52,7 @@ export default function SyncAllButton({ productIds }: { productIds: string[] }) 
           ? 'bg-green-600 text-white'
           : status === 'error'
           ? 'bg-orange-500 text-white'
-          : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+          : 'bg-blue-600 hover:bg-blue-700 text-white'
       }`}
     >
       {isRunning

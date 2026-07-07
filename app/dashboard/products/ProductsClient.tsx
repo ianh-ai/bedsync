@@ -390,7 +390,7 @@ export default function ProductsClient({
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Search products…"
-            className="w-full border border-gray-300 rounded-lg text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white"
+            className="w-full border border-gray-300 rounded-lg text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
             style={{fontSize: 12, padding: '5px 10px 5px 28px'}}
           />
         </div>
@@ -399,7 +399,7 @@ export default function ProductsClient({
             <button
               onClick={() => setActiveBrand(null)}
               className={activeBrand === null
-                ? 'rounded-full font-medium transition-colors bg-indigo-600 text-white'
+                ? 'rounded-full font-medium transition-colors bg-blue-600 text-white'
                 : 'rounded-full font-medium transition-colors bg-gray-100 text-gray-600 hover:bg-gray-200'
               }
               style={{fontSize: 11, padding: '2px 10px'}}
@@ -411,7 +411,7 @@ export default function ProductsClient({
                 key={brand}
                 onClick={() => setActiveBrand(activeBrand === brand ? null : brand)}
                 className={activeBrand === brand
-                  ? 'rounded-full font-medium capitalize transition-colors bg-indigo-600 text-white'
+                  ? 'rounded-full font-medium capitalize transition-colors bg-blue-600 text-white'
                   : 'rounded-full font-medium capitalize transition-colors bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }
                 style={{fontSize: 11, padding: '2px 10px'}}
@@ -493,7 +493,7 @@ export default function ProductsClient({
                         type="checkbox"
                         checked={filtered.length > 0 && filtered.every(p => selectedIds.has(p.id))}
                         onChange={handleSelectAll}
-                        style={{width: 14, height: 14, cursor: 'pointer', accentColor: '#4f46e5'}}
+                        style={{width: 14, height: 14, cursor: 'pointer', accentColor: '#844CDA'}}
                       />
                     </th>
                     <th className="text-left font-semibold text-gray-500 uppercase tracking-wider" style={{fontSize: 10, padding: '8px 24px 8px 0'}}>Product</th>
@@ -530,7 +530,7 @@ export default function ProductsClient({
                                   ? 'transition-opacity opacity-100'
                                   : 'transition-opacity opacity-0 group-hover:opacity-100'
                                 }
-                                style={{width: 14, height: 14, cursor: 'pointer', accentColor: '#4f46e5'}}
+                                style={{width: 14, height: 14, cursor: 'pointer', accentColor: '#844CDA'}}
                               />
                             </td>
                             <td className="font-medium text-gray-900 max-w-xs truncate" style={{fontSize: 13, padding: '9px 24px 9px 0'}}>{name}</td>
@@ -653,7 +653,7 @@ export default function ProductsClient({
                   type="text"
                   value={editForm.shopifyProductId}
                   onChange={e => setEditForm(f => f && ({ ...f, shopifyProductId: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  className="w-full border border-gray-300 rounded-lg text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="e.g. 7891234567890"
                   style={{fontSize: 13, padding: '5px 10px'}}
                 />
@@ -668,7 +668,7 @@ export default function ProductsClient({
                   type="text"
                   value={editForm.label}
                   onChange={e => setEditForm(f => f && ({ ...f, label: e.target.value }))}
-                  className="w-full border border-gray-300 rounded-lg text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  className="w-full border border-gray-300 rounded-lg text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="Override display name"
                   style={{fontSize: 13, padding: '5px 10px'}}
                 />
@@ -682,7 +682,7 @@ export default function ProductsClient({
                     <label
                       key={val}
                       className={editForm.priceMode === val
-                        ? 'flex-1 flex items-center justify-center rounded-lg border-2 cursor-pointer transition-colors border-indigo-600 bg-indigo-50 text-indigo-800'
+                        ? 'flex-1 flex items-center justify-center rounded-lg border-2 cursor-pointer transition-colors border-blue-600 bg-blue-50 text-blue-800'
                         : 'flex-1 flex items-center justify-center rounded-lg border-2 cursor-pointer transition-colors border-gray-200 text-gray-900 hover:border-gray-300'
                       }
                       style={{gap: 7, padding: '7px 10px'}}
@@ -693,7 +693,7 @@ export default function ProductsClient({
                         value={val}
                         checked={editForm.priceMode === val}
                         onChange={() => setEditForm(f => f && ({ ...f, priceMode: val }))}
-                        className="accent-indigo-600"
+                        className="accent-blue-600"
                       />
                       <span className="font-medium" style={{fontSize: 11}}>
                         {val === 'match' ? 'Match Manufacturer Price' : 'Add Markup'}
@@ -713,7 +713,7 @@ export default function ProductsClient({
                         type="button"
                         onClick={() => setEditForm(f => f && ({ ...f, markupType: val }))}
                         className={editForm.markupType === val
-                          ? 'flex-1 font-semibold rounded-md border transition-colors bg-indigo-600 text-white border-indigo-600'
+                          ? 'flex-1 font-semibold rounded-md border transition-colors bg-blue-600 text-white border-blue-600'
                           : 'flex-1 font-semibold rounded-md border transition-colors bg-white text-gray-600 border-gray-200 hover:border-gray-300'
                         }
                         style={{fontSize: 11, padding: '4px 0'}}
@@ -733,7 +733,7 @@ export default function ProductsClient({
                       value={editForm.markupValue}
                       onChange={e => setEditForm(f => f && ({ ...f, markupValue: e.target.value }))}
                       placeholder="0"
-                      className="w-full border border-gray-300 rounded-lg text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      className="w-full border border-gray-300 rounded-lg text-gray-900 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                       style={editForm.markupType === 'fixed'
                         ? {fontSize: 13, padding: '5px 10px 5px 22px'}
                         : {fontSize: 13, padding: '5px 22px 5px 10px'}
@@ -769,7 +769,7 @@ export default function ProductsClient({
                         value={editForm.guardrailMin}
                         onChange={e => setEditForm(f => f && ({ ...f, guardrailMin: e.target.value }))}
                         placeholder="e.g. 500"
-                        className="w-full border border-gray-300 rounded-lg text-gray-900 text-center focus:outline-none focus:ring-2 focus:ring-indigo-500 placeholder:text-gray-500"
+                        className="w-full border border-gray-300 rounded-lg text-gray-900 text-center focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-gray-500"
                         style={{fontSize: 13, padding: '5px 8px 5px 22px'}}
                       />
                     </div>
@@ -786,7 +786,7 @@ export default function ProductsClient({
                         value={editForm.guardrailMax}
                         onChange={e => setEditForm(f => f && ({ ...f, guardrailMax: e.target.value }))}
                         placeholder="e.g. 2000"
-                        className="w-full border border-gray-300 rounded-lg text-gray-900 text-center focus:outline-none focus:ring-2 focus:ring-indigo-500 placeholder:text-gray-500"
+                        className="w-full border border-gray-300 rounded-lg text-gray-900 text-center focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-gray-500"
                         style={{fontSize: 13, padding: '5px 8px 5px 22px'}}
                       />
                     </div>
@@ -818,7 +818,7 @@ export default function ProductsClient({
                 <button
                   onClick={handleEditSave}
                   disabled={editSaving}
-                  className="font-semibold bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white rounded-lg transition-colors"
+                  className="font-semibold bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-lg transition-colors"
                   style={{fontSize: 11, padding: '5px 12px'}}
                 >
                   {editSaving ? 'Saving…' : 'Save Changes'}

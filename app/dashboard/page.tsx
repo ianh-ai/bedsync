@@ -194,7 +194,7 @@ export default async function DashboardPage({
               {String(value)}
             </p>
             {link ? (
-              <Link href={link.href} className="text-xs font-medium text-indigo-600 hover:text-indigo-800">
+              <Link href={link.href} className="text-xs font-medium text-blue-600 hover:text-blue-800">
                 {link.label} →
               </Link>
             ) : (
@@ -209,7 +209,7 @@ export default async function DashboardPage({
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <h2 className="text-base font-semibold text-gray-900">Recent Price Changes</h2>
           {recentChanges.length > 0 && (
-            <Link href="/dashboard/sync-log" className="text-sm font-medium text-indigo-600 hover:text-indigo-800">
+            <Link href="/dashboard/sync-log" className="text-sm font-medium text-blue-600 hover:text-blue-800">
               View All Changes →
             </Link>
           )}
@@ -239,7 +239,7 @@ export default async function DashboardPage({
                     <td className="px-6 py-3.5">
                       <Link
                         href={`/dashboard/history/${change.productId}`}
-                        className="font-medium text-gray-900 hover:text-indigo-600 transition-colors"
+                        className="font-medium text-gray-900 hover:text-blue-600 transition-colors"
                       >
                         {change.productName}
                       </Link>

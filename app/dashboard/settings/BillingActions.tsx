@@ -210,7 +210,7 @@ export default function BillingActions({
               <button
                 onClick={handleUpgradeConfirmed}
                 disabled={loading !== null}
-                className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold py-2.5 rounded-lg transition-colors disabled:opacity-60"
+                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold py-2.5 rounded-lg transition-colors disabled:opacity-60"
               >
                 {loading ? 'Upgrading…' : 'Confirm upgrade'}
               </button>
@@ -255,7 +255,7 @@ export default function BillingActions({
             </div>
             <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
               <div
-                className={`h-full rounded-full transition-all ${brandCount >= brandLimit ? 'bg-red-500' : 'bg-indigo-500'}`}
+                className={`h-full rounded-full transition-all ${brandCount >= brandLimit ? 'bg-red-500' : 'bg-blue-500'}`}
                 style={{ width: `${usedPct}%` }}
               />
             </div>
@@ -288,7 +288,7 @@ export default function BillingActions({
                 key={opt.tier}
                 onClick={() => setConfirmUpgrade(opt)}
                 disabled={loading !== null}
-                className="w-full text-left px-4 py-3 rounded-lg border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-sm font-medium text-indigo-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                className="w-full text-left px-4 py-3 rounded-lg border border-blue-200 bg-blue-50 hover:bg-blue-100 text-sm font-medium text-blue-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {loading === `upgrade-${opt.tier}` ? 'Upgrading…' : `${opt.label} — ${opt.price}`}
               </button>
@@ -323,7 +323,7 @@ export default function BillingActions({
             <button
               onClick={handleReactivate}
               disabled={loading !== null}
-              className="text-indigo-600 font-medium hover:underline disabled:opacity-50"
+              className="text-blue-600 font-medium hover:underline disabled:opacity-50"
             >
               {loading === 'reactivate' ? 'Loading…' : 'Reactivate'}
             </button>

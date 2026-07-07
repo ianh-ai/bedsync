@@ -99,7 +99,7 @@ export default function Sidebar({ email, planTier, planStatus, brandCount, brand
               href={href}
               className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                 active
-                  ? 'bg-indigo-600 text-white'
+                  ? 'bg-blue-600 text-white'
                   : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
               }`}
             >
@@ -121,9 +121,9 @@ export default function Sidebar({ email, planTier, planStatus, brandCount, brand
 
       <div className="px-3 py-4 border-t border-gray-100 space-y-2">
         {isActive && (
-          <div className="px-3 py-2 bg-indigo-50 rounded-lg">
-            <p className="text-xs font-semibold text-indigo-700">{planLabel} Plan</p>
-            <p className="text-xs text-indigo-500 mt-0.5">{brandCount} of {limitLabel} brands used</p>
+          <div className="px-3 py-2 bg-blue-50 rounded-lg">
+            <p className="text-xs font-semibold text-blue-700">{planLabel} Plan</p>
+            <p className="text-xs text-blue-500 mt-0.5">{brandCount} of {limitLabel} brands used</p>
           </div>
         )}
         {isActive && (
