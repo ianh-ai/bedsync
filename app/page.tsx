@@ -527,7 +527,7 @@ function HomeContent() {
             </h1>
 
             <p className="text-lg sm:text-xl text-gray-500 max-w-2xl mx-auto mb-8 leading-relaxed">
-              BedSync monitors manufacturer prices daily across 14 brands and syncs them to your Shopify or WooCommerce store — so you never lose a sale to an outdated price.
+              BedSync monitors manufacturer prices daily across 15 brands and syncs them to your Shopify or WooCommerce store — so you never lose a sale to an outdated price.
             </p>
 
             <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-14">

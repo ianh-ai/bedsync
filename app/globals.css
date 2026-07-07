@@ -10,6 +10,19 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /* BedSync brand purple — overrides Tailwind's built-in blue scale */
+  --color-blue-50: #F5F0FD;
+  --color-blue-100: #EDE6FA;
+  --color-blue-200: #D9CEFF;
+  --color-blue-300: #C0A8F0;
+  --color-blue-400: #A97DE8;
+  --color-blue-500: #9865E0;
+  --color-blue-600: #844CDA;
+  --color-blue-700: #6B3AB5;
+  --color-blue-800: #5A2E9A;
+  --color-blue-900: #3D1D6E;
+  --color-blue-950: #260D4A;
 }
 
 @media (prefers-color-scheme: dark) {

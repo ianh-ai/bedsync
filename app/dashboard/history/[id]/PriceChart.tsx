@@ -15,7 +15,7 @@ const SIZE_COLORS: Record<string, string> = {
   'Twin': '#f97316',
   'Twin XL': '#84cc16',
   'Full': '#ef4444',
-  'Queen': '#3b82f6',
+  'Queen': '#844CDA',
   'King': '#8b5cf6',
   'Cal King': '#eab308',
 }
