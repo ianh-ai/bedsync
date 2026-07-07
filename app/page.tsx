@@ -468,6 +468,7 @@ function HomeContent() {
               {authEmail === null ? null : authEmail ? (
                 <>
                   <span className="text-sm text-gray-500 max-w-[180px] truncate">{authEmail}</span>
+                  <Link href="/dashboard" className="text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors">Go to Dashboard</Link>
                   <button onClick={handleSignOut} className="text-sm text-gray-600 hover:text-gray-900 transition-colors">Sign Out</button>
                 </>
               ) : (
