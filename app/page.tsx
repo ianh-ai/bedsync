@@ -213,6 +213,7 @@ const FAQ_ITEMS = [
   { q: 'Can I see what changed?', a: 'Yes. Every sync includes before-and-after pricing, timestamps, and a complete history of all detected changes.' },
   { q: 'Is there a history of previous prices?', a: 'Yes. BedSync stores historical pricing so you can review trends and verify when changes occurred.' },
   { q: 'Do you offer onboarding?', a: 'Yes. Every account includes a guided onboarding experience to help you get your first products syncing quickly.' },
+  { q: 'Can you add a brand I don\'t see listed?', a: 'Absolutely — we\'re always expanding our brand catalog. Reach out to us at bedsyncsupport@gmail.com with the brand name and website and we\'ll get it added as soon as possible.' },
 ]
 
 function FAQAccordion() {
@@ -927,6 +928,7 @@ function HomeContent() {
               <a href="/terms" className="text-xs text-gray-400 hover:text-gray-600 transition-colors">Terms</a>
               <a href="/privacy" className="text-xs text-gray-400 hover:text-gray-600 transition-colors">Privacy Policy</a>
               <a href="/dmca" className="text-xs text-gray-400 hover:text-gray-600 transition-colors">DMCA</a>
+              <a href="/contact" className="text-xs text-gray-400 hover:text-gray-600 transition-colors">Contact</a>
             </div>
           </div>
         </footer>
