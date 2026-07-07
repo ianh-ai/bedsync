@@ -921,8 +921,13 @@ function HomeContent() {
               ))}
             </div>
           </div>
-          <div className="max-w-6xl mx-auto mt-8 pt-6 border-t border-gray-100 text-center">
+          <div className="max-w-6xl mx-auto mt-8 pt-6 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-3">
             <p className="text-xs text-gray-400">© 2026 BedSync. All rights reserved.</p>
+            <div className="flex items-center gap-4">
+              <a href="/terms" className="text-xs text-gray-400 hover:text-gray-600 transition-colors">Terms</a>
+              <a href="/privacy" className="text-xs text-gray-400 hover:text-gray-600 transition-colors">Privacy Policy</a>
+              <a href="/dmca" className="text-xs text-gray-400 hover:text-gray-600 transition-colors">DMCA</a>
+            </div>
           </div>
         </footer>
 
