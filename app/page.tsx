@@ -792,7 +792,7 @@ function HomeContent() {
               { icon: '⏱', stat: '8+ hours saved per week', body: 'Time spent manually checking and updating manufacturer prices.' },
               { icon: '💰', stat: 'Never miss a manufacturer sale', body: 'Always match the sale price the same day it goes live.' },
               { icon: '📊', stat: 'Full price history', body: 'See every price change across all your tracked products.' },
-              { icon: '🔄', stat: '14 brands, 120+ models', body: 'The most comprehensive mattress price catalog available.' },
+              { icon: '🔄', stat: '15 brands, 120+ models', body: 'The most comprehensive mattress price catalog available.' },
             ].map(({ icon, stat, body }) => (
               <div key={stat} className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
                 <div className="text-3xl mb-3">{icon}</div>
