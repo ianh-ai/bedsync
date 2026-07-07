@@ -38,6 +38,15 @@ function getNextSyncTime(lastSyncedAt: string | null, cooldownMs: number): Date 
 function fmtTime(d: Date): string {
   return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
 }
+
+function fmtRemaining(nextAt: Date): string {
+  const totalMins = Math.ceil((nextAt.getTime() - Date.now()) / 60000)
+  const hrs = Math.floor(totalMins / 60)
+  const mins = totalMins % 60
+  if (hrs > 0 && mins > 0) return `${hrs}h ${mins}m remaining`
+  if (hrs > 0) return `${hrs}h remaining`
+  return `${mins}m remaining`
+}
 type ChartPoint = { time: string; [size: string]: string | number }
 
 type EditForm = {
@@ -112,6 +121,8 @@ export default function ProductsClient({
 
   const [syncAllStatus, setSyncAllStatus] = useState<SyncAllStatus>('idle')
   const [syncAllLastRun, setSyncAllLastRun] = useState<string | null>(syncAllLastRunAt)
+  const [cooldownToast, setCooldownToast] = useState<string | null>(null)
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const router = useRouter()
   const anyChecked = selectedIds.size > 0
@@ -120,6 +131,12 @@ export default function ProductsClient({
     () => getNextSyncTime(syncAllLastRun, SYNC_ALL_COOLDOWN_MS),
     [syncAllLastRun]
   )
+
+  function showCooldownToast(nextAt: Date) {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
+    setCooldownToast(`Next sync available at ${fmtTime(nextAt)} · ${fmtRemaining(nextAt)}`)
+    toastTimerRef.current = setTimeout(() => setCooldownToast(null), 5000)
+  }
 
   // Load price history when stats modal opens
   useEffect(() => {
@@ -407,12 +424,9 @@ export default function ProductsClient({
       </div>
       <div style={{paddingLeft: 12, paddingTop: 1}}>
         <button
-          onClick={handleSyncAll}
-          disabled={!!syncAllCooldownUntil || syncAllStatus === 'running' || overLimit}
-          title={
-            syncAllCooldownUntil ? `Next sync available at ${fmtTime(syncAllCooldownUntil)}` :
-            overLimit ? 'Remove brands to sync' : 'Sync all products'
-          }
+          onClick={() => syncAllCooldownUntil ? showCooldownToast(syncAllCooldownUntil) : handleSyncAll()}
+          disabled={syncAllStatus === 'running' || overLimit}
+          title={overLimit ? 'Remove brands to sync' : 'Sync all products'}
           className={
             syncAllStatus === 'done'
               ? 'inline-flex items-center font-medium rounded-md border transition-colors bg-green-50 text-green-700 border-green-200 disabled:opacity-50'
@@ -546,12 +560,9 @@ export default function ProductsClient({
                                 ) : (
                                   <>
                                     <button
-                                      onClick={() => handleSync(product.id)}
-                                      disabled={syncStatus !== 'idle' || overLimit || inCooldown}
-                                      title={
-                                        inCooldown ? `Next sync available at ${fmtTime(productCooldownUntil!)}` :
-                                        overLimit ? 'Remove brands to sync' : 'Sync prices'
-                                      }
+                                      onClick={() => inCooldown ? showCooldownToast(productCooldownUntil!) : handleSync(product.id)}
+                                      disabled={syncStatus !== 'idle' || overLimit}
+                                      title={overLimit ? 'Remove brands to sync' : 'Sync prices'}
                                       className={
                                         syncStatus === 'done'
                                           ? 'inline-flex items-center font-medium rounded-md border transition-colors bg-green-50 text-green-700 border-green-200 disabled:opacity-50'
@@ -903,6 +914,20 @@ export default function ProductsClient({
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Cooldown toast */}
+      {cooldownToast && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-start gap-3 bg-gray-900 text-white rounded-xl shadow-2xl px-4 py-3 max-w-xs">
+          <svg className="shrink-0 mt-0.5 text-amber-400" style={{width: 15, height: 15}} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <div style={{flex: 1}}>
+            <p className="font-semibold" style={{fontSize: 12}}>Sync cooldown active</p>
+            <p className="text-gray-300" style={{fontSize: 11, marginTop: 2}}>{cooldownToast}</p>
+          </div>
+          <button onClick={() => setCooldownToast(null)} className="shrink-0 text-gray-400 hover:text-white" style={{fontSize: 14, lineHeight: 1}}>✕</button>
         </div>
       )}
     </>
