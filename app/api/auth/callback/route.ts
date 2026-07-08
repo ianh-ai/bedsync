@@ -15,7 +15,7 @@ async function registerGdprWebhooks(shop: string, accessToken: string) {
 
   for (const topic of GDPR_TOPICS) {
     try {
-      const res = await fetch(`https://${shop}/admin/api/2024-10/webhooks.json`, {
+      const res = await fetch(`https://${shop}/admin/api/2024-01/webhooks.json`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
