@@ -87,7 +87,8 @@ export async function runSync(
 
     // Per-product 8-hour cooldown — only enforced after successful syncs
     const lastSynced = product.last_synced_at as string | null
-    if (lastSynced) {
+    const bypassCooldown = process.env.DISABLE_SYNC_COOLDOWN === 'true'
+    if (!bypassCooldown && lastSynced) {
       const elapsed = Date.now() - new Date(lastSynced).getTime()
       if (elapsed < 8 * 60 * 60 * 1000) {
         const nextSyncAt = new Date(new Date(lastSynced).getTime() + 8 * 60 * 60 * 1000).toISOString()

@@ -23,7 +23,8 @@ export async function POST() {
     .single()
 
   const lastRun = (profile?.sync_all_last_run_at as string | null) ?? null
-  if (lastRun) {
+  const bypassCooldown = process.env.DISABLE_SYNC_COOLDOWN === 'true'
+  if (!bypassCooldown && lastRun) {
     const elapsed = Date.now() - new Date(lastRun).getTime()
     if (elapsed < SYNC_ALL_COOLDOWN_MS) {
       const nextSyncAt = new Date(new Date(lastRun).getTime() + SYNC_ALL_COOLDOWN_MS).toISOString()
