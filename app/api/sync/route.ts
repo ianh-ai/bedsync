@@ -98,7 +98,7 @@ export async function runSync(
     }
 
     // Diagnostic: log the exact key and a sample unfiltered row to verify schema/values
-    console.log(`[sync] prices query key: product_id="${tracked_product_id}"`)
+    console.log(`[sync] prices query key: tracked_product_id="${tracked_product_id}"`)
     const { data: pricesSample } = await createAdminClient().from('prices').select('*').limit(1)
     console.log(`[sync] prices table sample (admin, unfiltered):`, JSON.stringify(pricesSample))
 
@@ -107,7 +107,7 @@ export async function runSync(
     const { data: allPrices, error: pricesError } = await supabase
       .from('prices')
       .select('*')
-      .eq('product_id', tracked_product_id)
+      .eq('tracked_product_id', tracked_product_id)
       .order('scraped_at', { ascending: false })
 
     const seenSizes = new Set<string>()
