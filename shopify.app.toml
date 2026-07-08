@@ -1,7 +1,7 @@
 name = "BedSync"
 client_id = "b7ed18e946c3ca173a256dc62a5d7750"
 application_url = "https://bedsync.net"
-embedded = true
+embedded = false
 
 [access_scopes]
 scopes = "read_products,write_products"
