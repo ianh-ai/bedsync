@@ -7,6 +7,10 @@ export const runtime = 'nodejs'
 export const maxDuration = 300
 
 export async function GET(request: Request) {
+  if (process.env.DISABLE_AUTO_SYNC === 'true') {
+    return Response.json({ skipped: true, reason: 'disabled for testing' })
+  }
+
   const authHeader = request.headers.get('authorization')
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
