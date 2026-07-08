@@ -52,9 +52,24 @@ async function handleShopRedact(shopDomain: string) {
 
 export async function POST(request: Request) {
   const rawBody = await request.text()
-  const hmacHeader = request.headers.get('x-shopify-hmac-sha256') ?? ''
-  const topic = request.headers.get('x-shopify-topic') ?? ''
-  const shopDomain = request.headers.get('x-shopify-shop-domain') ?? ''
+
+  const hmacHeader    = request.headers.get('x-shopify-hmac-sha256') ?? ''
+  const topic         = request.headers.get('x-shopify-topic') ?? ''
+  const shopDomain    = request.headers.get('x-shopify-shop-domain') ?? ''
+  const webhookId     = request.headers.get('x-shopify-webhook-id') ?? ''
+  const contentType   = request.headers.get('content-type') ?? ''
+  const apiVersion    = request.headers.get('x-shopify-api-version') ?? ''
+
+  // Log everything needed to debug HMAC failures
+  console.log('[shopify/webhook] incoming request:', JSON.stringify({
+    topic,
+    shopDomain,
+    webhookId,
+    contentType,
+    apiVersion,
+    bodyLength: rawBody.length,
+    hmacReceived: hmacHeader ? `${hmacHeader.slice(0, 8)}…` : '(missing)',
+  }))
 
   const secret = process.env.SHOPIFY_API_SECRET
   if (!secret) {
@@ -62,12 +77,21 @@ export async function POST(request: Request) {
     return Response.json({ error: 'Server configuration error' }, { status: 500 })
   }
 
+  // Log what our computed HMAC looks like vs what was received
+  const computedHmac = createHmac('sha256', secret).update(rawBody, 'utf8').digest('base64')
+  console.log('[shopify/webhook] HMAC check:', JSON.stringify({
+    computed: `${computedHmac.slice(0, 8)}…`,
+    received: hmacHeader ? `${hmacHeader.slice(0, 8)}…` : '(missing)',
+    secretPrefix: `${secret.slice(0, 4)}…`,
+    match: computedHmac === hmacHeader,
+  }))
+
   if (!hmacHeader || !verifyHmac(rawBody, hmacHeader, secret)) {
     console.warn(`[shopify/webhook] HMAC verification failed — topic=${topic} shop=${shopDomain}`)
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  console.log(`[shopify/webhook] received topic=${topic} shop=${shopDomain}`)
+  console.log(`[shopify/webhook] verified topic=${topic} shop=${shopDomain}`)
 
   switch (topic) {
     case 'customers/data_request':
