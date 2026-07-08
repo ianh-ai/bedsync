@@ -2,6 +2,40 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createHmac, timingSafeEqual } from 'node:crypto'
 import { createClient } from '@/lib/supabase/server'
 
+const GDPR_TOPICS = ['customers/data_request', 'customers/redact', 'shop/redact'] as const
+
+async function registerGdprWebhooks(shop: string, accessToken: string) {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL
+  if (!appUrl) {
+    console.warn('[shopify/callback] NEXT_PUBLIC_APP_URL not set — skipping webhook registration')
+    return
+  }
+
+  const address = `${appUrl}/api/webhooks/shopify`
+
+  for (const topic of GDPR_TOPICS) {
+    try {
+      const res = await fetch(`https://${shop}/admin/api/2024-10/webhooks.json`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Shopify-Access-Token': accessToken,
+        },
+        body: JSON.stringify({ webhook: { topic, address, format: 'json' } }),
+      })
+      if (res.ok) {
+        console.log(`[shopify/callback] registered webhook topic=${topic}`)
+      } else {
+        const body = await res.text()
+        // 422 means the webhook already exists — not an error
+        console.log(`[shopify/callback] webhook registration topic=${topic}: ${res.status} ${body}`)
+      }
+    } catch (err) {
+      console.warn(`[shopify/callback] webhook registration error topic=${topic}:`, err instanceof Error ? err.message : err)
+    }
+  }
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl
   const shop = searchParams.get('shop')
@@ -131,6 +165,9 @@ export async function GET(request: NextRequest) {
   if (upsertError) {
     return Response.json({ error: upsertError.message }, { status: 500 })
   }
+
+  // --- Register mandatory GDPR compliance webhooks ---
+  await registerGdprWebhooks(shop, access_token)
 
   // --- Clear nonce cookie and redirect ---
   const successUrl = new URL('/dashboard/products', request.url)
