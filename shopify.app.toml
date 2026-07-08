@@ -1,3 +1,14 @@
+name = "BedSync"
+client_id = "b7ed18e946c3ca173a256dc62a5d7750"
+application_url = "https://bedsync.net"
+embedded = true
+
+[access_scopes]
+scopes = "read_products,write_products"
+
+[auth]
+redirect_urls = ["https://bedsync.net/api/auth/callback"]
+
 [webhooks]
 api_version = "2024-01"
 
