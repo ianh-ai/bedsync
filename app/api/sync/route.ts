@@ -104,7 +104,7 @@ export async function runSync(
 
     // Fetch all price rows for this product ordered newest-first, then deduplicate
     // in JS to get the most recent row per size (equivalent to DISTINCT ON (size)).
-    const { data: allPrices, error: pricesError } = await supabase
+    const { data: allPrices, error: pricesError } = await createAdminClient()
       .from('prices')
       .select('*')
       .eq('tracked_product_id', tracked_product_id)
