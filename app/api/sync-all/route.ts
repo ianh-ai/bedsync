@@ -1,6 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { runScrape } from '../scrape/route'
 import { runSync } from '../sync/route'
 
 export const runtime = 'nodejs'
@@ -67,14 +66,6 @@ export async function POST() {
   for (const product of products) {
     const name = (product.label as string | null) || (product.shopify_product_title as string | null) || product.id
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const scrapeRes = await runScrape(product.id, admin as any)
-      if (!scrapeRes.ok) {
-        console.log(`[sync-all] "${name}" scrape failed: ${scrapeRes.status}`)
-        failed++
-        continue
-      }
-
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const syncRes = await runSync(product.id, admin as any, storeOverride)
       const syncBody = await syncRes.json().catch(() => ({})) as { skipped?: boolean; reason?: string }
