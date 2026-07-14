@@ -110,7 +110,37 @@ async function scrapeHelix(url: string): Promise<ScrapedVariant[]> {
         console.log(`[scrape:helix] Approach 0 (handle="${handle}") failed:`, err instanceof Error ? err.message : err)
       }
     }
-    console.log(`[scrape:helix] Approach 0 exhausted — falling through to HTML approaches`)
+    console.log(`[scrape:helix] Approach 0 exhausted — trying Approach 0.5`)
+
+    // --- Approach 0.5: Shopify catalog endpoint (products.json) ---
+    // Some handles 404 on the individual product.json endpoint but are still listed
+    // in the paginated catalog. Direct fetch (no ScraperAPI) — same as Approach 0.
+    try {
+      const catalogUrl = `${helixOrigin}/products.json?limit=250`
+      console.log(`[scrape:helix] Approach 0.5: ${catalogUrl}`)
+      const catalogRes = await fetch(catalogUrl, {
+        headers: { ...BROWSER_HEADERS, Referer: helixOrigin + '/' },
+      })
+      console.log(`[scrape:helix] Approach 0.5 status: ${catalogRes.status}`)
+      if (catalogRes.ok) {
+        const catalogData = await catalogRes.json() as Record<string, unknown>
+        const products = Array.isArray(catalogData.products) ? catalogData.products as Array<Record<string, unknown>> : []
+        const matched = products.find(p => handlesToTry.includes(String(p.handle ?? '')))
+        if (matched) {
+          const results = parseHelixJson({ product: matched })
+          if (results.length >= 2) {
+            console.log(`[scrape:helix] ✓ Approach 0.5 (handle="${matched.handle}"): ${results.length} sizes extracted`)
+            return results
+          }
+          console.log(`[scrape:helix] Approach 0.5 matched handle="${matched.handle}" but yielded ${results.length} size(s)`)
+        } else {
+          console.log(`[scrape:helix] Approach 0.5: no product in catalog matched handle(s) ${handlesToTry.join(', ')}`)
+        }
+      }
+    } catch (err) {
+      console.log(`[scrape:helix] Approach 0.5 failed:`, err instanceof Error ? err.message : err)
+    }
+    console.log(`[scrape:helix] Approach 0.5 exhausted — falling through to HTML approaches`)
   }
 
   // HTML fetch needed for Approaches 1 and 3.
