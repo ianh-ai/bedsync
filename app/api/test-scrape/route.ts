@@ -1,4 +1,4 @@
-import { scrapeForBrand } from '../scrape/route'
+import { scrapeForBrand, type ScrapedVariant } from '@/lib/scrapers'
 import { CATALOG } from '@/lib/catalog'
 
 export const runtime = 'nodejs'
@@ -30,7 +30,7 @@ export async function POST(request: Request) {
     if (!variants || variants.length === 0) {
       return Response.json({ success: false, error: 'Scraper returned no variants' })
     }
-    const sizes = variants.map(v => ({
+    const sizes = variants.map((v: ScrapedVariant) => ({
       title: v.title,
       price: v.price,
       compare_at_price: v.compare_at_price,

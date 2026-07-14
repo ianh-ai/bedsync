@@ -97,31 +97,45 @@ export async function runSync(
       }
     }
 
-    // Diagnostic: log the exact key and a sample unfiltered row to verify schema/values
-    console.log(`[sync] prices query key: tracked_product_id="${tracked_product_id}"`)
-    const { data: pricesSample } = await createAdminClient().from('prices').select('*').limit(1)
-    console.log(`[sync] prices table sample (admin, unfiltered):`, JSON.stringify(pricesSample))
+    // Look up the latest cached prices for this product's (brand, url, variant_filter)
+    // key. Prices are populated daily by scripts/daily-scrape.ts instead of being
+    // scraped on-demand here.
+    const productVariantFilter: string | null = product.variant_filter ?? null
+    console.log(`[sync] brand_prices lookup: brand="${product.brand}" url="${product.manufacturer_url}" variant_filter=${productVariantFilter ?? 'none'}`)
 
-    // Fetch all price rows for this product ordered newest-first, then deduplicate
-    // in JS to get the most recent row per size (equivalent to DISTINCT ON (size)).
-    const { data: allPrices, error: pricesError } = await createAdminClient()
-      .from('prices')
+    const brandPricesBaseQuery = createAdminClient()
+      .from('brand_prices')
       .select('*')
-      .eq('tracked_product_id', tracked_product_id)
-      .order('scraped_at', { ascending: false })
+      .eq('brand', product.brand)
+      .eq('url', product.manufacturer_url)
 
+    const { data: brandPriceRows, error: brandPricesError } = await (
+      productVariantFilter
+        ? brandPricesBaseQuery.eq('variant_filter', productVariantFilter)
+        : brandPricesBaseQuery.is('variant_filter', null)
+    )
+      .order('scraped_at', { ascending: false })
+      .limit(6)
+    console.log(`[sync] brand_prices fetched: ${brandPriceRows?.length ?? 0} row(s) (error: ${brandPricesError?.message ?? 'none'})`)
+
+    if (!brandPriceRows || brandPriceRows.length === 0) {
+      return Response.json({ error: 'No prices available yet — prices are updated daily. Check back soon.' }, { status: 400 })
+    }
+
+    const newestScrapedAt = new Date(brandPriceRows[0].scraped_at).getTime()
+    const ageHours = (Date.now() - newestScrapedAt) / (60 * 60 * 1000)
+    if (ageHours > 25) {
+      console.log(`[sync] brand_prices stale: newest row is ${ageHours.toFixed(1)}h old`)
+      return Response.json({ error: 'Prices are being updated. Try again shortly.' }, { status: 400 })
+    }
+
+    // Deduplicate in JS to get the newest row per size (equivalent to DISTINCT ON (size)).
     const seenSizes = new Set<string>()
-    const latestPrices = (allPrices ?? []).filter(row => {
+    const latestPrices = brandPriceRows.filter(row => {
       if (seenSizes.has(row.size)) return false
       seenSizes.add(row.size)
       return true
     })
-    console.log(`[sync] prices fetched: ${latestPrices?.length ?? 0} rows (error: ${pricesError?.message ?? 'none'})`)
-
-    if (!latestPrices || latestPrices.length === 0) {
-      console.error(`[sync] product ${tracked_product_id}: no scraped prices found — run scrape first`)
-      return Response.json({ error: 'No scraped prices found. Run scrape first.' }, { status: 400 })
-    }
 
     const priceBySize: Record<string, { regular_price: number; sale_price: number | null }> = {}
     for (const row of latestPrices) {
