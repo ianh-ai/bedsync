@@ -115,14 +115,19 @@ async function scrapeHelix(url: string): Promise<ScrapedVariant[]> {
     // --- Approach 0.5: Shopify catalog endpoint (products.json) ---
     // Some handles 404 on the individual product.json endpoint but are still listed
     // in the paginated catalog. Direct fetch (no ScraperAPI) — same as Approach 0.
-    try {
-      const catalogUrl = `${helixOrigin}/products.json?limit=250`
+    // Tries the root catalog first, then the "all" collection catalog if that 404s.
+    const catalogUrls = [
+      `${helixOrigin}/products.json?limit=250`,
+      `${helixOrigin}/collections/all/products.json?limit=250`,
+    ]
+    for (const catalogUrl of catalogUrls) {
       console.log(`[scrape:helix] Approach 0.5: ${catalogUrl}`)
-      const catalogRes = await fetch(catalogUrl, {
-        headers: { ...BROWSER_HEADERS, Referer: helixOrigin + '/' },
-      })
-      console.log(`[scrape:helix] Approach 0.5 status: ${catalogRes.status}`)
-      if (catalogRes.ok) {
+      try {
+        const catalogRes = await fetch(catalogUrl, {
+          headers: { ...BROWSER_HEADERS, Referer: helixOrigin + '/' },
+        })
+        console.log(`[scrape:helix] Approach 0.5 status: ${catalogRes.status}`)
+        if (!catalogRes.ok) continue
         const catalogData = await catalogRes.json() as Record<string, unknown>
         const products = Array.isArray(catalogData.products) ? catalogData.products as Array<Record<string, unknown>> : []
         const matched = products.find(p => handlesToTry.includes(String(p.handle ?? '')))
@@ -136,9 +141,9 @@ async function scrapeHelix(url: string): Promise<ScrapedVariant[]> {
         } else {
           console.log(`[scrape:helix] Approach 0.5: no product in catalog matched handle(s) ${handlesToTry.join(', ')}`)
         }
+      } catch (err) {
+        console.log(`[scrape:helix] Approach 0.5 (${catalogUrl}) failed:`, err instanceof Error ? err.message : err)
       }
-    } catch (err) {
-      console.log(`[scrape:helix] Approach 0.5 failed:`, err instanceof Error ? err.message : err)
     }
     console.log(`[scrape:helix] Approach 0.5 exhausted — falling through to HTML approaches`)
   }
