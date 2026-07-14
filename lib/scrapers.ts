@@ -538,13 +538,13 @@ async function scrapeHelix(url: string): Promise<ScrapedVariant[]> {
   if (process.env.SCRAPER_API_KEY) {
     console.log(`[scrape:helix] ScraperAPI target URL: ${targetUrl}`)
 
-    // Attempt 1: render=false&premium=true — 20s timeout.
+    // Attempt 1: render=false&premium=true — 30s timeout.
     // _variantData is server-side rendered into <script> tags, so no JS execution
     // is needed. render=false is significantly faster than render=true.
     try {
       const noRenderUrl = `http://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&url=${encodeURIComponent(targetUrl)}&render=false&premium=true`
       console.log(`[scrape:helix] attempt 1: render=false&premium=true`)
-      const { ok, status, body } = await scraperFetch(noRenderUrl, 'render=false premium', 20_000)
+      const { ok, status, body } = await scraperFetch(noRenderUrl, 'render=false premium', 30_000)
       console.log(`[scrape:helix] render=false premium status: ${status}, body length: ${body.length}`)
       if (ok && body.length >= 10_000 && (body.includes('_variantData') || body.includes('"discounted_price":'))) {
         console.log(`[scrape:helix] render=false premium succeeded`)
@@ -2038,8 +2038,13 @@ async function scrapeTempurpedic(url: string, productName?: string): Promise<Scr
         headers: { ...BROWSER_HEADERS, Accept: 'application/json' },
         signal: AbortSignal.timeout(10_000),
       })
+      console.log(`[scrape:tempurpedic] API status: ${productRes.status}`)
       if (productRes.ok) {
-        const productData = await productRes.json() as Record<string, unknown>
+        const apiText = await productRes.text()
+        if (!apiText.trim() || !apiText.trim().startsWith('{')) {
+          console.log(`[scrape:tempurpedic] API returned non-JSON body (${apiText.length} bytes) — WAF likely blocking, falling through to HTML`)
+        } else {
+        const productData = JSON.parse(apiText) as Record<string, unknown>
         const title = String(productData.title ?? '')
         // Extract base model name by stripping the " - Size" suffix
         const COMMA_SIZES_API = ['Split CA King', 'Split King', 'RV King', 'Twin Long', 'CA King', 'King', 'Queen', 'Full', 'Twin']
@@ -2099,6 +2104,7 @@ async function scrapeTempurpedic(url: string, productName?: string): Promise<Scr
             console.log(`[scrape:tempurpedic] API approach yielded ${results.length} size(s) — falling through to HTML`)
           }
         }
+        } // end: valid JSON body branch
       } else {
         console.log(`[scrape:tempurpedic] API returned ${productRes.status} — falling through to HTML`)
       }
@@ -2125,11 +2131,12 @@ async function scrapeTempurpedic(url: string, productName?: string): Promise<Scr
     console.log(`[scrape:tempurpedic] Direct fetch failed:`, e instanceof Error ? e.message : e)
   }
 
-  // ScraperAPI fallback: render=false first (JSON-LD is SSR), then render=true
+  // ScraperAPI fallback: render=false first (JSON-LD is SSR), then render=true, then ultra_premium
   if (!html && process.env.SCRAPER_API_KEY) {
     for (const [params, label, timeoutMs] of [
-      ['render=false&premium=true', 'no-render-premium', 20_000],
-      ['render=true&premium=true', 'render-premium', 35_000],
+      ['render=false&premium=true', 'no-render-premium', 30_000],
+      ['render=true&premium=true', 'render-premium', 55_000],
+      ['render=true&ultra_premium=true', 'render-ultra-premium', 65_000],
     ] as const) {
       try {
         const scraperUrl = `http://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&url=${encodeURIComponent(url)}&${params}`
