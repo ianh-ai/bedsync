@@ -102,29 +102,36 @@ async function tryHelixJsonEndpoints(url: string): Promise<ScrapedVariant[] | nu
       const hasMultipleTiers = hasStandardTier && hasErgoalignTier
       console.log(`[scrape:helix] Approach 0: isEliteTierUrl=${isEliteTierUrl} hasMultipleTiers=${hasMultipleTiers} (standard=${hasStandardTier} ergoalign=${hasErgoalignTier})`)
 
-      const variants = hasMultipleTiers
+      const filteredVariants = hasMultipleTiers
         ? allVariants.filter(v => {
             const o3 = String(v.option3 ?? '').toLowerCase()
             return isEliteTierUrl ? o3.includes('ergoalign') : o3.includes('standard')
           })
         : allVariants
+      // Safety: if the tier filter produced nothing (unexpected option3 values),
+      // fall back to all variants so we don't silently drop to Approach 2.
+      const variants = filteredVariants.length > 0 ? filteredVariants : allVariants
 
-      const results: ScrapedVariant[] = []
-      for (const v of variants) {
-        const size = normalizeSize(String(v.option1 ?? ''))
-        if (!size) continue
-        if (String(v.option1 ?? '').includes(' with ') && results.some(r => r.title === size)) continue
-        const salePrice = v.price != null ? parseFloat(v.price) : null
-        const regularPrice = v.compare_at_price != null ? parseFloat(v.compare_at_price) : null
-        if (!salePrice || isNaN(salePrice)) continue
-        const hasRealSale = regularPrice != null && !isNaN(regularPrice) && regularPrice > salePrice
-        results.push({
-          title: size,
-          price: salePrice,
-          compare_at_price: hasRealSale ? regularPrice! : null,
-        })
+      const extractResults = (pool: typeof allVariants): ScrapedVariant[] => {
+        const results: ScrapedVariant[] = []
+        for (const v of pool) {
+          const size = normalizeSize(String(v.option1 ?? ''))
+          if (!size) continue
+          if (String(v.option1 ?? '').includes(' with ') && results.some(r => r.title === size)) continue
+          const salePrice = v.price != null ? parseFloat(v.price) : null
+          const regularPrice = v.compare_at_price != null ? parseFloat(v.compare_at_price) : null
+          if (!salePrice || isNaN(salePrice)) continue
+          const hasRealSale = regularPrice != null && !isNaN(regularPrice) && regularPrice > salePrice
+          results.push({
+            title: size,
+            price: salePrice,
+            compare_at_price: hasRealSale ? regularPrice! : null,
+          })
+        }
+        return results
       }
-      return results
+
+      return extractResults(variants)
     }
 
     for (const handle of handlesToTry) {
