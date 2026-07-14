@@ -88,9 +88,27 @@ async function tryHelixJsonEndpoints(url: string): Promise<ScrapedVariant[] | nu
       ? [rawHandle, `helix-${rawHandle}`]
       : [rawHandle]
 
+    // Elite/Luxe products share a single Shopify product URL with all tier variants
+    // bundled. option3 distinguishes: "standard support" = base, "ergoalign layer" = Elite/Luxe.
+    const isEliteTierUrl = /elite|luxe/i.test(url)
+
     const parseHelixJson = (data: unknown): ScrapedVariant[] => {
       const product = (data as Record<string, unknown>)?.product as Record<string, unknown> | undefined
-      const variants = (product?.variants ?? []) as Array<{ option1: string; price: string; compare_at_price: string | null }>
+      const allVariants = (product?.variants ?? []) as Array<{ option1: string; option2: string; option3: string; price: string; compare_at_price: string | null }>
+
+      // Detect multiple support tiers in one product (Elite + Standard bundled)
+      const hasStandardTier = allVariants.some(v => String(v.option3 ?? '').toLowerCase().includes('standard'))
+      const hasErgoalignTier = allVariants.some(v => String(v.option3 ?? '').toLowerCase().includes('ergoalign'))
+      const hasMultipleTiers = hasStandardTier && hasErgoalignTier
+      console.log(`[scrape:helix] Approach 0: isEliteTierUrl=${isEliteTierUrl} hasMultipleTiers=${hasMultipleTiers} (standard=${hasStandardTier} ergoalign=${hasErgoalignTier})`)
+
+      const variants = hasMultipleTiers
+        ? allVariants.filter(v => {
+            const o3 = String(v.option3 ?? '').toLowerCase()
+            return isEliteTierUrl ? o3.includes('ergoalign') : o3.includes('standard')
+          })
+        : allVariants
+
       const results: ScrapedVariant[] = []
       for (const v of variants) {
         const size = normalizeSize(String(v.option1 ?? ''))
@@ -192,7 +210,8 @@ async function tryHelixJsonEndpoints(url: string): Promise<ScrapedVariant[] | nu
   return null
 }
 
-export function parseHelixHtml(html: string): ScrapedVariant[] {
+export function parseHelixHtml(html: string, url?: string): ScrapedVariant[] {
+  const isEliteTierUrl = url != null && /elite|luxe/i.test(url)
   const $ = load(html)
   const blobFound = html.includes('"discounted_price":')
 
@@ -366,12 +385,17 @@ export function parseHelixHtml(html: string): ScrapedVariant[] {
             // Old format: option_2 = "TENCEL cover" | other covers
             // Birch: option_2 = null, option_3 = null (one variant per size — no filter needed)
             const hasStandardSupport = arr.some(v => String(v.option_3 ?? '').toLowerCase().includes('standard'))
+            const hasErgoalign = arr.some(v => String(v.option_3 ?? '').toLowerCase().includes('ergoalign'))
             const hasTencel = arr.some(v => String(v.option_2 ?? '').toLowerCase().includes('tencel'))
-            console.log(`[scrape:helix] Approach 2: hasStandardSupport=${hasStandardSupport} hasTencel=${hasTencel}`)
+            console.log(`[scrape:helix] Approach 2: isEliteTierUrl=${isEliteTierUrl} hasStandardSupport=${hasStandardSupport} hasErgoalign=${hasErgoalign} hasTencel=${hasTencel}`)
 
             for (const v of arr) {
-              if (hasStandardSupport) {
-                // New Helix format: filter to base "standard support" config only
+              if (hasStandardSupport && hasErgoalign) {
+                // Both tiers present — pick the right one based on the URL
+                const o3 = String(v.option_3 ?? '').toLowerCase()
+                if (isEliteTierUrl ? !o3.includes('ergoalign') : !o3.includes('standard')) continue
+              } else if (hasStandardSupport) {
+                // Only standard tier present — filter to it (base Helix format)
                 if (!String(v.option_3 ?? '').toLowerCase().includes('standard')) continue
               } else if (hasTencel) {
                 // Old Helix format: filter to TENCEL cover
@@ -630,7 +654,7 @@ async function scrapeHelix(url: string): Promise<ScrapedVariant[]> {
   if (!res.ok) throw new Error(`HTML fetch failed: ${res.status}`)
   const html = await res.text()
   console.log(`[scrape:helix] HTML size: ${html.length} bytes`)
-  return parseHelixHtml(html)
+  return parseHelixHtml(html, url)
 }
 
 export async function scrapeHelixWithPlaywright(url: string, browser: Browser): Promise<ScrapedVariant[]> {
@@ -652,7 +676,7 @@ export async function scrapeHelixWithPlaywright(url: string, browser: Browser): 
       console.log(`[scrape:helix:playwright] Cloudflare challenge detected — falling back to ScraperAPI HTML fetch`)
       return scrapeHelix(url)
     }
-    return parseHelixHtml(html)
+    return parseHelixHtml(html, url)
   } finally {
     await context.close()
   }
