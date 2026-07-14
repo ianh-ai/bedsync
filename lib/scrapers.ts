@@ -310,11 +310,12 @@ export function parseHelixHtml(html: string): ScrapedVariant[] {
   } // end !blobFound
 
   // --- Approach 2: Embedded variants JSON with discounted_price field ---
-  // Helix embeds a full variants array in the page. Each element contains:
+  // Helix/Birch embed a _variantData array in SSR <script> tags. Each element has:
   //   option_1_label: "Twin" / "King" / "CA King" etc.
-  //   price_formatted: "$1,732"  ← MSRP/regular price
-  //   discounted_price: 129900   ← sale price in cents
-  // Filter to option_2 containing "tencel" to get one row per size.
+  //   price_formatted: "$1,732"   ← MSRP/regular price
+  //   discounted_price: 129900    ← sale price in cents
+  // Base config filter: new Helix uses option_3="standard support"; old Helix used
+  // option_2="TENCEL cover"; Birch has null options (one variant per size).
   console.log(`[scrape:helix] Approach 2: embedded discounted_price variants scan`)
   {
     const discountedIdx = html.indexOf('"discounted_price":')
@@ -360,10 +361,23 @@ export function parseHelixHtml(html: string): ScrapedVariant[] {
             const arr = JSON.parse(html.slice(arrayStart, arrayEnd + 1)) as Array<Record<string, unknown>>
             const helixSizeMap = new Map<string, ScrapedVariant>()
 
+            // Determine which option field to use for filtering base/standard config.
+            // New format: option_3 = "standard support" | "ergoalign layer"
+            // Old format: option_2 = "TENCEL cover" | other covers
+            // Birch: option_2 = null, option_3 = null (one variant per size — no filter needed)
+            const hasStandardSupport = arr.some(v => String(v.option_3 ?? '').toLowerCase().includes('standard'))
+            const hasTencel = arr.some(v => String(v.option_2 ?? '').toLowerCase().includes('tencel'))
+            console.log(`[scrape:helix] Approach 2: hasStandardSupport=${hasStandardSupport} hasTencel=${hasTencel}`)
+
             for (const v of arr) {
-              // Use TENCEL cover as the base option (one row per size).
-              const option2 = String(v.option_2 ?? '').toLowerCase()
-              if (!option2.includes('tencel')) continue
+              if (hasStandardSupport) {
+                // New Helix format: filter to base "standard support" config only
+                if (!String(v.option_3 ?? '').toLowerCase().includes('standard')) continue
+              } else if (hasTencel) {
+                // Old Helix format: filter to TENCEL cover
+                if (!String(v.option_2 ?? '').toLowerCase().includes('tencel')) continue
+              }
+              // Birch (no option_2/option_3): take first variant per size
 
               const label = String(v.option_1_label ?? v.option_1 ?? '')
               const size = normalizeSize(label)
@@ -524,31 +538,49 @@ async function scrapeHelix(url: string): Promise<ScrapedVariant[]> {
   if (process.env.SCRAPER_API_KEY) {
     console.log(`[scrape:helix] ScraperAPI target URL: ${targetUrl}`)
 
-    // Attempt 1: render=true&premium=true — 25s timeout. Helix's pricing JSON is
-    // server-side rendered into the page, so render=true still finds the
-    // discounted_price blob, and ScraperAPI's JS rendering is reliable again —
-    // render=false was consistently timing out and wasting 30s before falling through.
+    // Attempt 1: render=false&premium=true — 20s timeout.
+    // _variantData is server-side rendered into <script> tags, so no JS execution
+    // is needed. render=false is significantly faster than render=true.
     try {
-      const premiumUrl = `http://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&url=${encodeURIComponent(targetUrl)}&render=true&premium=true`
-      console.log(`[scrape:helix] attempt 1: render=true&premium=true`)
-      const { ok, status, body } = await scraperFetch(premiumUrl, 'render=true premium', 25_000)
-      console.log(`[scrape:helix] render=true premium status: ${status}, body length: ${body.length}`)
-      if (ok && body.length >= 10_000) {
-        console.log(`[scrape:helix] render=true premium succeeded`)
+      const noRenderUrl = `http://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&url=${encodeURIComponent(targetUrl)}&render=false&premium=true`
+      console.log(`[scrape:helix] attempt 1: render=false&premium=true`)
+      const { ok, status, body } = await scraperFetch(noRenderUrl, 'render=false premium', 20_000)
+      console.log(`[scrape:helix] render=false premium status: ${status}, body length: ${body.length}`)
+      if (ok && body.length >= 10_000 && (body.includes('_variantData') || body.includes('"discounted_price":'))) {
+        console.log(`[scrape:helix] render=false premium succeeded`)
         htmlBody = body
         blobFound = body.includes('"discounted_price":')
       } else {
-        console.log(`[scrape:helix] render=true premium blocked (status=${status}, len=${body.length}) — falling through`)
+        console.log(`[scrape:helix] render=false premium blocked or missing data (status=${status}, len=${body.length}) — falling through`)
       }
     } catch {
-      console.log(`[scrape:helix] render=true premium threw — falling through`)
+      console.log(`[scrape:helix] render=false premium threw — falling through`)
     }
 
-    // Attempt 2: render=true&ultra_premium=true — full JS render, 25s timeout
+    // Attempt 2: render=true&premium=true — 25s timeout (JS rendering fallback)
+    if (!htmlBody) {
+      try {
+        const premiumUrl = `http://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&url=${encodeURIComponent(targetUrl)}&render=true&premium=true`
+        console.log(`[scrape:helix] attempt 2: render=true&premium=true`)
+        const { ok, status, body } = await scraperFetch(premiumUrl, 'render=true premium', 25_000)
+        console.log(`[scrape:helix] render=true premium status: ${status}, body length: ${body.length}`)
+        if (ok && body.length >= 10_000) {
+          console.log(`[scrape:helix] render=true premium succeeded`)
+          htmlBody = body
+          blobFound = body.includes('"discounted_price":')
+        } else {
+          console.log(`[scrape:helix] render=true premium blocked (status=${status}, len=${body.length}) — falling through`)
+        }
+      } catch {
+        console.log(`[scrape:helix] render=true premium threw — falling through`)
+      }
+    }
+
+    // Attempt 3: render=true&ultra_premium=true — full JS render, 25s timeout
     if (!htmlBody) {
       try {
         const ultraUrl = `http://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&url=${encodeURIComponent(targetUrl)}&render=true&ultra_premium=true`
-        console.log(`[scrape:helix] attempt 2: render=true&ultra_premium=true`)
+        console.log(`[scrape:helix] attempt 3: render=true&ultra_premium=true`)
         const { ok, status, body } = await scraperFetch(ultraUrl, 'render=true ultra_premium', 25_000)
         console.log(`[scrape:helix] render=true ultra_premium status: ${status}, body length: ${body.length}`)
         if (ok && body.length >= 10_000) {
@@ -1994,6 +2026,86 @@ const TEMPURPEDIC_SIZE_SKIP = new Set(['Split King', 'Split CA King', 'RV King']
 
 async function scrapeTempurpedic(url: string, productName?: string): Promise<ScrapedVariant[]> {
   console.log(`[scrape:tempurpedic] url="${url}" productName="${productName ?? ''}"`)
+
+  // --- API-first approach: TempurPedic exposes a REST API at /api/products/{id}/ ---
+  // Avoids WAF entirely. Extract the product ID from /v/{id}/ URLs.
+  const vIdMatch = url.match(/\/v\/(\d+)\/?/)
+  if (vIdMatch) {
+    const productId = vIdMatch[1]
+    try {
+      console.log(`[scrape:tempurpedic] Trying API for product ${productId}`)
+      const productRes = await fetch(`https://www.tempurpedic.com/api/products/${productId}/`, {
+        headers: { ...BROWSER_HEADERS, Accept: 'application/json' },
+        signal: AbortSignal.timeout(10_000),
+      })
+      if (productRes.ok) {
+        const productData = await productRes.json() as Record<string, unknown>
+        const title = String(productData.title ?? '')
+        // Extract base model name by stripping the " - Size" suffix
+        const COMMA_SIZES_API = ['Split CA King', 'Split King', 'RV King', 'Twin Long', 'CA King', 'King', 'Queen', 'Full', 'Twin']
+        const trailingCommaSize = COMMA_SIZES_API.find(s => title.endsWith(', ' + s))
+        const baseModel = trailingCommaSize
+          ? title.slice(0, title.length - trailingCommaSize.length - 2).trim()
+          : title.includes(' - ')
+          ? title.slice(0, title.lastIndexOf(' - ')).trim()
+          : title
+        console.log(`[scrape:tempurpedic] API base model: "${baseModel}"`)
+
+        // Fetch parent product to get all size children
+        const parentRaw = productData.parent as Record<string, unknown> | string | null | undefined
+        const parentUrl = typeof parentRaw === 'string' ? parentRaw
+          : typeof parentRaw === 'object' && parentRaw !== null ? String((parentRaw as Record<string, unknown>).url ?? '')
+          : ''
+        if (parentUrl) {
+          const parentRes = await fetch(parentUrl, {
+            headers: { ...BROWSER_HEADERS, Accept: 'application/json' },
+            signal: AbortSignal.timeout(10_000),
+          })
+          if (parentRes.ok) {
+            const parentData = await parentRes.json() as Record<string, unknown>
+            const children = Array.isArray(parentData.children) ? parentData.children as Array<Record<string, unknown>> : []
+            console.log(`[scrape:tempurpedic] API parent has ${children.length} children`)
+
+            const seen = new Map<string, ScrapedVariant>()
+            for (const child of children) {
+              const childTitle = String(child.title ?? '')
+              if (!childTitle.startsWith(baseModel)) continue
+
+              // Extract size suffix from title
+              const trailingSize = COMMA_SIZES_API.find(s => childTitle.endsWith(', ' + s))
+              const suffix = trailingSize
+                ? trailingSize
+                : childTitle.startsWith(baseModel + ' - ')
+                ? childTitle.slice(baseModel.length + 3).trim()
+                : ''
+              if (!suffix || TEMPURPEDIC_SIZE_SKIP.has(suffix)) continue
+              const mappedSize = TEMPURPEDIC_SIZE_MAP[suffix]
+              if (!mappedSize || seen.has(mappedSize)) continue
+
+              const priceObj = child.price as Record<string, unknown> | null | undefined
+              const rawPrice = priceObj?.excl_tax ?? priceObj?.cosmetic_excl_tax
+              const price = rawPrice != null ? parseFloat(String(rawPrice)) : null
+              if (price == null || isNaN(price) || price === 0) continue
+
+              console.log(`[scrape:tempurpedic] API size="${mappedSize}" price=$${price}`)
+              seen.set(mappedSize, { title: mappedSize, price, compare_at_price: null })
+            }
+
+            const results = [...seen.values()]
+            if (results.length >= 2) {
+              console.log(`[scrape:tempurpedic] ✓ API approach: ${results.length} size(s) extracted`)
+              return results
+            }
+            console.log(`[scrape:tempurpedic] API approach yielded ${results.length} size(s) — falling through to HTML`)
+          }
+        }
+      } else {
+        console.log(`[scrape:tempurpedic] API returned ${productRes.status} — falling through to HTML`)
+      }
+    } catch (e) {
+      console.log(`[scrape:tempurpedic] API approach failed:`, e instanceof Error ? e.message : e)
+    }
+  }
 
   let html: string | null = null
 
