@@ -113,12 +113,26 @@ async function tryHelixJsonEndpoints(url: string): Promise<ScrapedVariant[] | nu
       const jsonUrl = `${helixOrigin}/products/${handle}.json`
       console.log(`[scrape:helix] Approach 0: ${jsonUrl}`)
       try {
-        const jsonRes = await fetch(jsonUrl, {
+        let jsonText: string | null = null
+
+        // Direct fetch first (works locally; Cloudflare blocks it on CI/serverless IPs)
+        const directRes = await fetch(jsonUrl, {
           headers: { ...BROWSER_HEADERS, Referer: helixOrigin + '/' },
         })
-        console.log(`[scrape:helix] Approach 0 status: ${jsonRes.status}`)
-        if (!jsonRes.ok) continue
-        const results = parseHelixJson(await jsonRes.json())
+        console.log(`[scrape:helix] Approach 0 direct status: ${directRes.status}`)
+        if (directRes.ok) {
+          jsonText = await directRes.text()
+        } else if (process.env.SCRAPER_API_KEY) {
+          // Cloudflare blocked the direct request — proxy through ScraperAPI
+          console.log(`[scrape:helix] Approach 0: direct blocked (${directRes.status}) — trying ScraperAPI`)
+          const scraperUrl = `http://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&url=${encodeURIComponent(jsonUrl)}&render=false&premium=true`
+          const { ok, status: s, body } = await scraperFetch(scraperUrl, `Approach 0 ScraperAPI ${handle}`, 15_000)
+          console.log(`[scrape:helix] Approach 0 ScraperAPI status: ${s}`)
+          if (ok && body.startsWith('{')) jsonText = body
+        }
+
+        if (!jsonText) continue
+        const results = parseHelixJson(JSON.parse(jsonText))
         if (results.length >= 2) {
           console.log(`[scrape:helix] ✓ Approach 0 (handle="${handle}"): ${results.length} sizes extracted`)
           return results
@@ -601,6 +615,11 @@ export async function scrapeHelixWithPlaywright(url: string, browser: Browser): 
     await page.goto(url, { waitUntil: 'networkidle', timeout: 45_000 })
     const html = await page.content()
     console.log(`[scrape:helix:playwright] HTML size: ${html.length} bytes`)
+    // Cloudflare challenge pages are tiny (~1500 bytes) — fall back to ScraperAPI HTML fetch
+    if (html.length < 10_000) {
+      console.log(`[scrape:helix:playwright] Cloudflare challenge detected — falling back to ScraperAPI HTML fetch`)
+      return scrapeHelix(url)
+    }
     return parseHelixHtml(html)
   } finally {
     await context.close()
@@ -1332,6 +1351,20 @@ async function scrapeGeneric(url: string, variantFilter?: string | null): Promis
 }
 
 async function residentHomeFetch(url: string): Promise<Response> {
+  // The ResidentHome JSON API works via direct fetch — no bot protection needed.
+  // Only fall back to ScraperAPI if the direct request is rate-limited (403/429).
+  try {
+    const direct = await fetch(url, {
+      headers: { Accept: 'application/json', 'User-Agent': BROWSER_HEADERS['User-Agent'] },
+      signal: AbortSignal.timeout(10_000),
+    })
+    if (direct.status !== 403 && direct.status !== 429) return direct
+    console.log(`[scrape:nectar] Direct fetch returned ${direct.status} — falling back to ScraperAPI`)
+  } catch (e) {
+    console.log(`[scrape:nectar] Direct fetch failed:`, e instanceof Error ? e.message : e)
+  }
+
+  if (!process.env.SCRAPER_API_KEY) throw new Error('SCRAPER_API_KEY not set and direct fetch failed')
   const scraperUrl = `https://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&url=${encodeURIComponent(url)}&render=false`
   const res = await fetch(scraperUrl)
   if (res.status !== 403) return res
@@ -1961,10 +1994,51 @@ const TEMPURPEDIC_SIZE_SKIP = new Set(['Split King', 'Split CA King', 'RV King']
 
 async function scrapeTempurpedic(url: string, productName?: string): Promise<ScrapedVariant[]> {
   console.log(`[scrape:tempurpedic] url="${url}" productName="${productName ?? ''}"`)
-  const res = await fetch(url, { headers: BROWSER_HEADERS })
-  console.log(`[scrape:tempurpedic] HTML status: ${res.status}`)
-  if (!res.ok) throw new Error(`HTML fetch failed: ${res.status}`)
-  const html = await res.text()
+
+  let html: string | null = null
+
+  // Direct fetch — TempurPedic's WAF returns HTTP 202 + a 2-3 KB bot-challenge page
+  try {
+    const directRes = await fetch(url, { headers: BROWSER_HEADERS, signal: AbortSignal.timeout(15_000) })
+    console.log(`[scrape:tempurpedic] Direct status: ${directRes.status}`)
+    const body = await directRes.text()
+    const isWAF = body.length < 5_000 || body.includes('aws-waf') || body.toLowerCase().includes('captcha')
+    if (!isWAF) {
+      html = body
+      console.log(`[scrape:tempurpedic] HTML size: ${html.length} bytes`)
+    } else {
+      console.log(`[scrape:tempurpedic] WAF/captcha detected (${body.length} bytes) — trying ScraperAPI`)
+    }
+  } catch (e) {
+    console.log(`[scrape:tempurpedic] Direct fetch failed:`, e instanceof Error ? e.message : e)
+  }
+
+  // ScraperAPI fallback: render=false first (JSON-LD is SSR), then render=true
+  if (!html && process.env.SCRAPER_API_KEY) {
+    for (const [params, label, timeoutMs] of [
+      ['render=false&premium=true', 'no-render-premium', 20_000],
+      ['render=true&premium=true', 'render-premium', 35_000],
+    ] as const) {
+      try {
+        const scraperUrl = `http://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&url=${encodeURIComponent(url)}&${params}`
+        console.log(`[scrape:tempurpedic] ScraperAPI ${label}: ${url}`)
+        const controller = new AbortController()
+        const timer = setTimeout(() => controller.abort(), timeoutMs)
+        try {
+          const r = await fetch(scraperUrl, { signal: controller.signal })
+          const body = await r.text()
+          console.log(`[scrape:tempurpedic] ScraperAPI ${label} status: ${r.status}, length: ${body.length}`)
+          if (r.ok && body.length >= 5_000) { html = body; break }
+        } finally {
+          clearTimeout(timer)
+        }
+      } catch (err) {
+        console.log(`[scrape:tempurpedic] ScraperAPI ${label} failed:`, err instanceof Error ? err.message : err)
+      }
+    }
+  }
+
+  if (!html) throw new Error('All fetch attempts failed for TempurPedic page (WAF block)')
 
   const $ = load(html)
   const ldJsonScripts = $('script[type="application/ld+json"]').toArray()
