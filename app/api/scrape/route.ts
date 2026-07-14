@@ -114,21 +114,32 @@ async function scrapeHelix(url: string): Promise<ScrapedVariant[]> {
 
     // --- Approach 0.5: Shopify catalog endpoint (products.json) ---
     // Some handles 404 on the individual product.json endpoint but are still listed
-    // in the paginated catalog. Direct fetch (no ScraperAPI) — same as Approach 0.
-    // Tries the root catalog first, then the "all" collection catalog if that 404s.
-    const catalogUrls = [
-      `${helixOrigin}/products.json?limit=250`,
-      `${helixOrigin}/collections/all/products.json?limit=250`,
+    // in the paginated catalog. Tries the root catalog first via direct fetch, then
+    // the "all" collection catalog via ScraperAPI — collections/all returns a 200
+    // Cloudflare challenge page (not real JSON) on a direct fetch.
+    const catalogAttempts: Array<{ url: string; viaScraperApi: boolean }> = [
+      { url: `${helixOrigin}/products.json?limit=250`, viaScraperApi: false },
+      { url: `${helixOrigin}/collections/all/products.json?limit=250`, viaScraperApi: true },
     ]
-    for (const catalogUrl of catalogUrls) {
-      console.log(`[scrape:helix] Approach 0.5: ${catalogUrl}`)
+    for (const { url: catalogUrl, viaScraperApi } of catalogAttempts) {
+      if (viaScraperApi && !process.env.SCRAPER_API_KEY) continue
+      console.log(`[scrape:helix] Approach 0.5${viaScraperApi ? ' (via ScraperAPI)' : ''}: ${catalogUrl}`)
       try {
-        const catalogRes = await fetch(catalogUrl, {
-          headers: { ...BROWSER_HEADERS, Referer: helixOrigin + '/' },
-        })
-        console.log(`[scrape:helix] Approach 0.5 status: ${catalogRes.status}`)
-        if (!catalogRes.ok) continue
-        const catalogData = await catalogRes.json() as Record<string, unknown>
+        let status: number
+        let body: string
+        if (viaScraperApi) {
+          const scraperUrl = `http://api.scraperapi.com?api_key=${process.env.SCRAPER_API_KEY}&url=${encodeURIComponent(catalogUrl)}&render=false&premium=true`
+          ;({ status, body } = await scraperFetch(scraperUrl, 'Approach 0.5 collections/all', 10_000))
+        } else {
+          const catalogRes = await fetch(catalogUrl, {
+            headers: { ...BROWSER_HEADERS, Referer: helixOrigin + '/' },
+          })
+          status = catalogRes.status
+          body = await catalogRes.text()
+        }
+        console.log(`[scrape:helix] Approach 0.5 status: ${status}`)
+        if (status < 200 || status >= 300) continue
+        const catalogData = JSON.parse(body) as Record<string, unknown>
         const products = Array.isArray(catalogData.products) ? catalogData.products as Array<Record<string, unknown>> : []
         const matched = products.find(p => handlesToTry.includes(String(p.handle ?? '')))
         if (matched) {
