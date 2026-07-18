@@ -28,6 +28,89 @@ const BROWSER_HEADERS = {
   'Pragma': 'no-cache',
 }
 
+// Shopify exposes every variant (including price/compare_at_price) at
+// {origin}/products/{handle}.json with no JS rendering needed. Trying this
+// before the browser-based scraper avoids the DOM-heuristic failure modes
+// (invisible sticky bars, popovers, slow-loading pages) that hit Casper,
+// Birch, WinkBeds, Puffy, and Bear — modeled on tryHelixJsonEndpoints.
+async function tryShopifyProductJson(url: string): Promise<ScrapedVariant[] | null> {
+  const urlObj = new URL(url)
+  const handleMatch = url.match(/\/products\/([^/?#]+)/)
+  if (!handleMatch) return null
+  const handle = handleMatch[1]
+  const jsonUrl = `${urlObj.origin}/products/${handle}.json`
+
+  console.log(`[scrape:shopify] Trying ${jsonUrl}`)
+  try {
+    const res = await fetch(jsonUrl, {
+      headers: { ...BROWSER_HEADERS, Accept: 'application/json' },
+      signal: AbortSignal.timeout(15_000),
+    })
+    console.log(`[scrape:shopify] HTTP ${res.status}`)
+    if (!res.ok) return null
+
+    const data = await res.json() as Record<string, unknown>
+    const product = data.product as Record<string, unknown> | undefined
+    const variants = Array.isArray(product?.variants)
+      ? product!.variants as Array<Record<string, unknown>>
+      : []
+
+    if (variants.length === 0) {
+      console.log(`[scrape:shopify] No variants in response`)
+      return null
+    }
+
+    // Detect which option column (option1/option2/option3) holds the mattress size
+    const optionKeys = ['option1', 'option2', 'option3']
+    let sizeKey: string | null = null
+    for (const key of optionKeys) {
+      if (variants.some(v => normalizeSize(String(v[key] ?? '')) != null)) {
+        sizeKey = key
+        break
+      }
+    }
+
+    if (!sizeKey) {
+      console.log(`[scrape:shopify] No option column has recognizable size names`)
+      return null
+    }
+    console.log(`[scrape:shopify] Size key: ${sizeKey}`)
+
+    const results: ScrapedVariant[] = []
+    const seenSizes = new Set<string>()
+    for (const v of variants) {
+      const size = normalizeSize(String(v[sizeKey] ?? ''))
+      if (!size || seenSizes.has(size)) continue
+      seenSizes.add(size)
+
+      const price = parseFloat(String(v.price ?? '0'))
+      const compareAtRaw = v.compare_at_price  // null or a string like "1599.00"
+      const compareAt = compareAtRaw != null ? parseFloat(String(compareAtRaw)) : null
+
+      if (isNaN(price) || price <= 0) continue
+      const hasRealSale = compareAt != null && !isNaN(compareAt) && compareAt > price
+
+      console.log(`[scrape:shopify] size="${size}" price=${price} compareAt=${compareAt ?? 'null'} hasSale=${hasRealSale}`)
+      results.push({
+        title: size,
+        price,
+        compare_at_price: hasRealSale ? compareAt : null,
+      })
+    }
+
+    if (results.length < 2) {
+      console.log(`[scrape:shopify] Only ${results.length} recognizable size(s) — too few, returning null`)
+      return null
+    }
+
+    console.log(`[scrape:shopify] ✓ ${results.length} size(s) via Shopify product JSON`)
+    return results
+  } catch (err) {
+    console.log(`[scrape:shopify] Failed:`, err instanceof Error ? err.message : err)
+    return null
+  }
+}
+
 async function residentHomeFetch(url: string): Promise<Response> {
   // The ResidentHome JSON API works via direct fetch — no bot protection needed.
   // Only fall back to ScraperAPI if the direct request is rate-limited (403/429).
@@ -747,7 +830,13 @@ async function findSizeSelector(page: Page): Promise<SizeSelector | null> {
     const triggerText = (await trigger.textContent().catch(() => null)) ?? ''
     console.log(`[scrape:universal] Found closed size-dropdown trigger: "${triggerText.trim()}" — opening it`)
     try {
-      await trigger.click({ timeout: 5000 })
+      await trigger.scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => {})
+      await page.waitForTimeout(300)
+      try {
+        await trigger.click({ timeout: 5000 })
+      } catch {
+        await trigger.click({ timeout: 5000, force: true })
+      }
       await page.waitForTimeout(500)
 
       const options = page.locator('[role="option"], [role="menuitem"], li, button, [role="radio"]')
@@ -1030,5 +1119,16 @@ export async function scrapeForBrand(brand: string, url: string, variantFilter?:
     if (jsonResult) return jsonResult
     throw new Error('Helix JSON endpoints exhausted — no product.json/products.json match found, and browser scraping is blocked by DataDome')
   }
+
+  const SHOPIFY_HOSTS = new Set([
+    'casper.com', 'birchliving.com', 'winkbeds.com', 'puffy.com', 'bearmattress.com',
+  ])
+  const host = new URL(url).hostname.replace(/^www\./, '')
+  if (SHOPIFY_HOSTS.has(host)) {
+    const shopifyResult = await tryShopifyProductJson(url)
+    if (shopifyResult) return shopifyResult
+    console.log(`[scrape:shopify] JSON failed — falling through to browser scraping`)
+  }
+
   return scrapeUniversal(url, variantFilter, browser)
 }
