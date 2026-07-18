@@ -877,6 +877,10 @@ async function scrapeUniversal(url: string, variantFilter?: string | null, share
     const results = new Map<string, ScrapedVariant>()
 
     if (sizeSelector.kind === 'select') {
+      // Some sites (e.g. Bear) put the variant <select> in a "sticky" add-to-cart
+      // bar that's hidden until scrolled into view — selectOption() would otherwise
+      // wait out its full timeout on every single option, one at a time.
+      await sizeSelector.select.scrollIntoViewIfNeeded().catch(() => {})
       const options = await sizeSelector.select.locator('option').all()
       for (const opt of options) {
         const text = ((await opt.textContent()) ?? '').trim()
@@ -885,10 +889,17 @@ async function scrapeUniversal(url: string, variantFilter?: string | null, share
         const value = await opt.getAttribute('value')
         if (value == null) continue
         try {
-          await sizeSelector.select.selectOption(value, { timeout: 10_000 })
-        } catch (err) {
-          console.log(`[scrape:universal] selectOption failed for "${text}":`, err instanceof Error ? err.message : err)
-          continue
+          await sizeSelector.select.selectOption(value, { timeout: 5_000 })
+        } catch {
+          // Still not interactable (e.g. hidden behind another sticky/lazy
+          // element) — force-set the value; bypasses visibility/actionability
+          // checks but still fires the site's change handler.
+          try {
+            await sizeSelector.select.selectOption(value, { timeout: 5_000, force: true })
+          } catch (err) {
+            console.log(`[scrape:universal] selectOption failed for "${text}":`, err instanceof Error ? err.message : err)
+            continue
+          }
         }
         await page.waitForLoadState('networkidle', { timeout: 4_000 }).catch(() => {})
         await page.waitForTimeout(700)
@@ -902,10 +913,15 @@ async function scrapeUniversal(url: string, variantFilter?: string | null, share
       for (const { locator, size } of sizeSelector.items) {
         if (results.has(size)) continue
         try {
-          await locator.click({ timeout: 10_000 })
-        } catch (err) {
-          console.log(`[scrape:universal] click failed for "${size}":`, err instanceof Error ? err.message : err)
-          continue
+          await locator.scrollIntoViewIfNeeded().catch(() => {})
+          await locator.click({ timeout: 5_000 })
+        } catch {
+          try {
+            await locator.click({ timeout: 5_000, force: true })
+          } catch (err) {
+            console.log(`[scrape:universal] click failed for "${size}":`, err instanceof Error ? err.message : err)
+            continue
+          }
         }
         await page.waitForLoadState('networkidle', { timeout: 4_000 }).catch(() => {})
         await page.waitForTimeout(700)
@@ -926,7 +942,8 @@ async function scrapeUniversal(url: string, variantFilter?: string | null, share
             console.log(`[scrape:universal] combobox: trigger not found on reopen for "${size}"`)
             continue
           }
-          await trigger.click({ timeout: 5000 })
+          await trigger.scrollIntoViewIfNeeded().catch(() => {})
+          await trigger.click({ timeout: 5000 }).catch(() => trigger.click({ timeout: 5000, force: true }))
           await page.waitForTimeout(400)
 
           const options = page.locator('[role="option"], [role="menuitem"], li, button, [role="radio"]')
@@ -942,7 +959,7 @@ async function scrapeUniversal(url: string, variantFilter?: string | null, share
             await page.keyboard.press('Escape').catch(() => {})
             continue
           }
-          await matched.click({ timeout: 5000 })
+          await matched.click({ timeout: 5000 }).catch(() => matched!.click({ timeout: 5000, force: true }))
         } catch (err) {
           console.log(`[scrape:universal] combobox click failed for "${size}":`, err instanceof Error ? err.message : err)
           continue
