@@ -726,7 +726,18 @@ async function findSizeSelector(page: Page): Promise<SizeSelector | null> {
     seen.add(size)
     items.push({ locator: el, size })
   }
-  if (items.length >= 2) return { kind: 'clickable', items }
+  // Casper/Puffy stash their size labels inside a closed popover (display:none) —
+  // the text is findable but clicking would fail on every option, so require
+  // visibility here and fall through to the combobox path instead of returning.
+  const visibleItems: Array<{ locator: Locator; size: string }> = []
+  for (const item of items) {
+    try {
+      if (await item.locator.isVisible({ timeout: 500 })) visibleItems.push(item)
+    } catch {
+      // treat as not visible
+    }
+  }
+  if (visibleItems.length >= 2) return { kind: 'clickable', items: visibleItems }
 
   // Closed combobox pattern: a trigger button whose own text is a label plus the
   // currently-selected size (e.g. "SizeQueen"), which reveals a list of options
@@ -855,11 +866,17 @@ async function scrapeUniversal(url: string, variantFilter?: string | null, share
     // networkidle is unreliable on real sites — chat widgets, analytics beacons,
     // and personalization polling mean the network often never truly goes idle,
     // so a strict wait for it here would time out even on a healthy page load.
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 })
-    await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {})
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20_000 })
+    await page.waitForLoadState('networkidle', { timeout: 6_000 }).catch(() => {})
     await page.waitForTimeout(2000)
 
     await dismissModal(page)
+
+    // Bear's size selector lives in a sticky bottom bar that only mounts after
+    // scrolling past the hero section — findSizeSelector() finds nothing until
+    // this runs.
+    await page.evaluate(() => window.scrollBy(0, window.innerHeight * 1.5))
+    await page.waitForTimeout(800)
 
     const sizeSelector = await findSizeSelector(page)
     if (!sizeSelector) {
@@ -886,7 +903,12 @@ async function scrapeUniversal(url: string, variantFilter?: string | null, share
         const text = ((await opt.textContent()) ?? '').trim()
         const size = normalizeSize(text)
         if (!size || results.has(size)) continue
-        const value = await opt.getAttribute('value')
+        // getAttribute('value') reads the raw DOM attribute, which <option>
+        // elements often omit — the browser falls back to the text content for
+        // the actual .value, so read that JS property instead (Naturepedic's
+        // options have no value attribute, which was skipping all but the
+        // pre-selected one).
+        const value = (await opt.evaluate(el => (el as HTMLOptionElement).value)) ?? (await opt.getAttribute('value'))
         if (value == null) continue
         try {
           await sizeSelector.select.selectOption(value, { timeout: 5_000 })
@@ -901,8 +923,8 @@ async function scrapeUniversal(url: string, variantFilter?: string | null, share
             continue
           }
         }
-        await page.waitForLoadState('networkidle', { timeout: 4_000 }).catch(() => {})
-        await page.waitForTimeout(700)
+        await page.waitForLoadState('networkidle', { timeout: 3_000 }).catch(() => {})
+        await page.waitForTimeout(1200)
         const { price, compareAt, candidates } = await readDisplayedPrices(page)
         console.log(`[scrape:universal] size="${size}" price=${price ?? 'null'} compareAt=${compareAt ?? 'null'} candidates=${JSON.stringify(candidates)}`)
         if (price != null) {
@@ -918,12 +940,22 @@ async function scrapeUniversal(url: string, variantFilter?: string | null, share
         } catch {
           try {
             await locator.click({ timeout: 5_000, force: true })
-          } catch (err) {
-            console.log(`[scrape:universal] click failed for "${size}":`, err instanceof Error ? err.message : err)
-            continue
+          } catch {
+            // Some radios (e.g. Avocado) stay outside the viewport even after
+            // scrolling — possibly behind a sticky header — so both real and
+            // forced Playwright clicks fail their actionability checks. A raw
+            // JS .click() bypasses those checks entirely.
+            try {
+              const handle = await locator.elementHandle()
+              if (!handle) throw new Error('no element handle')
+              await page.evaluate(el => (el as HTMLElement).click(), handle)
+            } catch (err) {
+              console.log(`[scrape:universal] click failed for "${size}":`, err instanceof Error ? err.message : err)
+              continue
+            }
           }
         }
-        await page.waitForLoadState('networkidle', { timeout: 4_000 }).catch(() => {})
+        await page.waitForLoadState('networkidle', { timeout: 3_000 }).catch(() => {})
         await page.waitForTimeout(700)
         const { price, compareAt, candidates } = await readDisplayedPrices(page)
         console.log(`[scrape:universal] size="${size}" price=${price ?? 'null'} compareAt=${compareAt ?? 'null'} candidates=${JSON.stringify(candidates)}`)
@@ -964,7 +996,7 @@ async function scrapeUniversal(url: string, variantFilter?: string | null, share
           console.log(`[scrape:universal] combobox click failed for "${size}":`, err instanceof Error ? err.message : err)
           continue
         }
-        await page.waitForLoadState('networkidle', { timeout: 4_000 }).catch(() => {})
+        await page.waitForLoadState('networkidle', { timeout: 3_000 }).catch(() => {})
         await page.waitForTimeout(700)
         const { price, compareAt, candidates } = await readDisplayedPrices(page)
         console.log(`[scrape:universal] size="${size}" price=${price ?? 'null'} compareAt=${compareAt ?? 'null'} candidates=${JSON.stringify(candidates)}`)

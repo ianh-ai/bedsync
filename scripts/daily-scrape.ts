@@ -30,7 +30,7 @@ if (!BRIGHT_DATA_WS) {
 
 const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, { auth: { persistSession: false } })
 
-const BATCH_SIZE = 5
+const BATCH_SIZE = 8
 const RETENTION_DAYS = 7
 
 type PriceRow = {
