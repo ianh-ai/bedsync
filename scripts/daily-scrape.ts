@@ -1,13 +1,30 @@
-import { chromium, type Browser } from 'playwright'
+import * as fs from 'fs'
+import * as path from 'path'
+
+// Local-only convenience: GitHub Actions sets these as real job env vars, but
+// running this script directly via ts-node needs .env.local loaded manually.
+const envPath = path.resolve(__dirname, '../.env.local')
+if (fs.existsSync(envPath)) {
+  for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) {
+    const m = line.match(/^([^#=]+)=(.*)$/)
+    if (m) process.env[m[1].trim()] ??= m[2].trim()
+  }
+}
+
 import { createClient } from '@supabase/supabase-js'
-import { scrapeForBrand, scrapeHelixWithPlaywright, normalizeSize, type ScrapedVariant } from '@/lib/scrapers'
+import { scrapeForBrand, normalizeSize, type ScrapedVariant } from '@/lib/scrapers'
 import { BRAND_CONFIGS, type BrandConfig } from './brand-configs'
 
 const SUPABASE_URL = process.env.SUPABASE_URL
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY
+const BRIGHT_DATA_WS = process.env.BRIGHT_DATA_WS
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
   console.error('[daily-scrape] Missing SUPABASE_URL or SUPABASE_SERVICE_KEY')
+  process.exit(1)
+}
+if (!BRIGHT_DATA_WS) {
+  console.error('[daily-scrape] Missing BRIGHT_DATA_WS')
   process.exit(1)
 }
 
@@ -15,10 +32,6 @@ const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, { auth: { persist
 
 const BATCH_SIZE = 5
 const RETENTION_DAYS = 7
-// Playwright is used for these two brands only — both sit behind Cloudflare,
-// and the daily batch run has no reason to spend ScraperAPI credits when a
-// real headless browser gets past the challenge for free.
-const PLAYWRIGHT_BRANDS = new Set(['helix', 'birch'])
 
 type PriceRow = {
   brand: string
@@ -52,15 +65,20 @@ function toPriceRows(config: BrandConfig, variants: ScrapedVariant[], scrapedAt:
   return rows
 }
 
-async function scrapeOne(
-  config: BrandConfig,
-  browser: Browser | null
-): Promise<{ rows: PriceRow[] } | { error: string }> {
+async function scrapeOne(config: BrandConfig): Promise<{ rows: PriceRow[] } | { error: string }> {
   const scrapedAt = new Date().toISOString()
   try {
-    const variants = PLAYWRIGHT_BRANDS.has(config.brand)
-      ? await scrapeHelixWithPlaywright(config.url, browser!)
-      : await scrapeForBrand(config.brand, config.url, config.variant_filter, config.product_name, config.api_product_name)
+    // No shared browser passed — scrapeForBrand opens its own Bright Data session
+    // per call. Bright Data's Scraping Browser caps the number of distinct domains
+    // navigable within a single CDP connection, so one shared session can't be
+    // reused across ~14 different brand domains in this batch.
+    const variants = await scrapeForBrand(
+      config.brand,
+      config.url,
+      config.variant_filter,
+      config.product_name,
+      config.api_product_name
+    )
 
     const rows = toPriceRows(config, variants, scrapedAt)
     if (rows.length === 0) return { error: 'No recognizable size variants found' }
@@ -95,36 +113,29 @@ async function main() {
     console.log(`[daily-scrape] Cleanup: deleted ${count ?? 0} row(s) older than ${RETENTION_DAYS} days`)
   }
 
-  const needsBrowser = BRAND_CONFIGS.some(c => PLAYWRIGHT_BRANDS.has(c.brand))
-  const browser = needsBrowser ? await chromium.launch({ headless: true }) : null
-
   let succeeded = 0
   let failed = 0
 
-  try {
-    await runInBatches(BRAND_CONFIGS, BATCH_SIZE, async (config) => {
-      const label = labelFor(config)
-      const result = await scrapeOne(config, browser)
+  await runInBatches(BRAND_CONFIGS, BATCH_SIZE, async (config) => {
+    const label = labelFor(config)
+    const result = await scrapeOne(config)
 
-      if ('error' in result) {
-        failed++
-        console.error(`[daily-scrape] ✗ ${label}: ${result.error}`)
-        return
-      }
+    if ('error' in result) {
+      failed++
+      console.error(`[daily-scrape] ✗ ${label}: ${result.error}`)
+      return
+    }
 
-      const { error: insertError } = await admin.from('brand_prices').insert(result.rows)
-      if (insertError) {
-        failed++
-        console.error(`[daily-scrape] ✗ ${label}: insert failed — ${insertError.message}`)
-        return
-      }
+    const { error: insertError } = await admin.from('brand_prices').insert(result.rows)
+    if (insertError) {
+      failed++
+      console.error(`[daily-scrape] ✗ ${label}: insert failed — ${insertError.message}`)
+      return
+    }
 
-      succeeded++
-      console.log(`[daily-scrape] ✓ ${label}: ${result.rows.length} size(s)`)
-    })
-  } finally {
-    if (browser) await browser.close()
-  }
+    succeeded++
+    console.log(`[daily-scrape] ✓ ${label}: ${result.rows.length} size(s)`)
+  })
 
   console.log(`[daily-scrape] Done — ${succeeded} succeeded, ${failed} failed`)
   if (succeeded === 0 && failed > 0) process.exit(1)
