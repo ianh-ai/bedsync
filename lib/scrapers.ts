@@ -523,7 +523,106 @@ async function scraperFetch(scraperUrl: string, label: string, timeoutMs: number
   }
 }
 
+// Fetches a Helix product page via Bright Data's Web Unlocker (bypasses DataDome,
+// unlike ScraperAPI) and parses the embedded per-variant JSON blob rendered into
+// the page — each entry carries option_1_label (size), price_formatted (list
+// price string), and discounted_price (sale price in cents). This is structured,
+// per-variant data straight from the page's own state, not a heuristic guess at
+// which two dollar amounts on the page might be related.
+async function tryHelixWebUnlocker(pageUrl: string): Promise<ScrapedVariant[] | null> {
+  if (!process.env.BRIGHT_DATA_API_KEY) return null
+  console.log(`[scrape:helix:unlocker] Fetching ${pageUrl}`)
+  try {
+    const res = await fetch('https://api.brightdata.com/request', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.BRIGHT_DATA_API_KEY}`,
+      },
+      body: JSON.stringify({ zone: 'bedsync2', url: pageUrl, format: 'raw' }),
+      signal: AbortSignal.timeout(60_000),
+    })
+    const html = await res.text()
+    console.log(`[scrape:helix:unlocker] HTTP ${res.status}, ${html.length} chars`)
+    if (!res.ok || html.length < 10_000) return null
+
+    // The page embeds a JSON array of variant objects containing per-size pricing.
+    // Each entry has: option_1_label (size name), price_formatted (list price string),
+    // discounted_price (sale price in cents, integer), discount_amount (cents).
+    // Walk the HTML finding every JSON object that contains "discounted_price".
+    // Uses brace-depth tracking instead of a flat regex because variant objects
+    // contain nested sub-objects (e.g. metafields:{...}) between the key and closing brace.
+    const variantObjects: string[] = []
+    let searchFrom = 0
+    while (true) {
+      const keyIdx = html.indexOf('"discounted_price"', searchFrom)
+      if (keyIdx === -1) break
+      // Walk backward to find the opening { of the enclosing object
+      let openIdx = -1
+      for (let i = keyIdx - 1; i >= Math.max(0, keyIdx - 2000); i--) {
+        if (html[i] === '{') { openIdx = i; break }
+      }
+      if (openIdx === -1) { searchFrom = keyIdx + 1; continue }
+      // Walk forward from openIdx tracking brace depth to find the closing }
+      let depth = 0, closeIdx = -1
+      for (let i = openIdx; i < Math.min(html.length, openIdx + 5000); i++) {
+        if (html[i] === '{') depth++
+        else if (html[i] === '}') { depth--; if (depth === 0) { closeIdx = i; break } }
+      }
+      if (closeIdx === -1) { searchFrom = keyIdx + 1; continue }
+      variantObjects.push(html.slice(openIdx, closeIdx + 1))
+      searchFrom = closeIdx + 1
+    }
+    console.log(`[scrape:helix:unlocker] Variant blobs found: ${variantObjects.length}`)
+    if (variantObjects.length === 0) return null
+
+    const results: ScrapedVariant[] = []
+    const seenSizes = new Set<string>()
+
+    for (const raw of variantObjects) {
+      let obj: Record<string, unknown>
+      try { obj = JSON.parse(raw) } catch { continue }
+
+      const sizeLabel = String(obj.option_1_label ?? obj.option_1 ?? '')
+      const size = normalizeSize(sizeLabel)
+      if (!size || seenSizes.has(size)) continue
+      seenSizes.add(size)
+
+      // discounted_price is in cents; price_formatted is the list price string
+      const discountedCents = typeof obj.discounted_price === 'number' ? obj.discounted_price : null
+      const priceFormatted = String(obj.price_formatted ?? '').replace(/[^0-9.]/g, '')
+      const listPrice = priceFormatted ? parseFloat(priceFormatted) : null
+
+      if (!discountedCents || !listPrice) continue
+      const salePrice = Math.round(discountedCents) / 100
+
+      const hasRealSale = listPrice > salePrice
+      console.log(`[scrape:helix:unlocker] ${size}: list=$${listPrice} sale=$${salePrice} discount=${hasRealSale ? ((1 - salePrice/listPrice)*100).toFixed(1)+'%' : 'none'}`)
+      results.push({
+        title: size,
+        price: salePrice,
+        compare_at_price: hasRealSale ? listPrice : null,
+      })
+    }
+
+    if (results.length < 2) {
+      console.log(`[scrape:helix:unlocker] Only ${results.length} size(s) — insufficient`)
+      return null
+    }
+    console.log(`[scrape:helix:unlocker] ✓ ${results.length} sizes with live pricing`)
+    return results
+  } catch (err) {
+    console.log(`[scrape:helix:unlocker] Failed:`, err instanceof Error ? err.message : err)
+    return null
+  }
+}
+
 async function tryHelixJsonEndpoints(url: string): Promise<ScrapedVariant[] | null> {
+  // --- Approach -1: Bright Data Web Unlocker (bypasses DataDome, returns embedded variant JSON) ---
+  const unlockerResult = await tryHelixWebUnlocker(url)
+  if (unlockerResult) return unlockerResult
+  console.log(`[scrape:helix] Web Unlocker failed or unavailable — falling through to myshopify`)
+
   // --- Approach 0: Shopify product.json endpoint ---
   const helixOrigin = new URL(url).origin
   const handleMatch = url.match(/\/products\/([^\/?#]+)/)
