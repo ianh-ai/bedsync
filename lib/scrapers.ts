@@ -85,7 +85,8 @@ async function tryShopifyProductJson(url: string): Promise<ScrapedVariant[] | nu
 
       const price = parseFloat(String(v.price ?? '0'))
       const compareAtRaw = v.compare_at_price  // null or a string like "1599.00"
-      const compareAt = compareAtRaw != null ? parseFloat(String(compareAtRaw)) : null
+      const compareAtStr = compareAtRaw != null ? String(compareAtRaw).trim() : ''
+      const compareAt = compareAtStr && compareAtStr !== '0.00' ? parseFloat(compareAtStr) : null
 
       if (isNaN(price) || price <= 0) continue
       const hasRealSale = compareAt != null && !isNaN(compareAt) && compareAt > price
@@ -560,10 +561,11 @@ async function tryHelixJsonEndpoints(url: string): Promise<ScrapedVariant[] | nu
 
       const extractResults = (pool: typeof allVariants): ScrapedVariant[] => {
         const results: ScrapedVariant[] = []
+        const seenSizes = new Set<string>()
         for (const v of pool) {
           const size = normalizeSize(String(v.option1 ?? ''))
-          if (!size) continue
-          if (String(v.option1 ?? '').includes(' with ') && results.some(r => r.title === size)) continue
+          if (!size || seenSizes.has(size)) continue
+          seenSizes.add(size)
           const salePrice = v.price != null ? parseFloat(v.price) : null
           const regularPrice = v.compare_at_price != null ? parseFloat(v.compare_at_price) : null
           if (!salePrice || isNaN(salePrice)) continue
@@ -613,7 +615,43 @@ async function tryHelixJsonEndpoints(url: string): Promise<ScrapedVariant[] | nu
         console.log(`[scrape:helix] Approach 0 (handle="${handle}") failed:`, err instanceof Error ? err.message : err)
       }
     }
-    console.log(`[scrape:helix] Approach 0 exhausted — trying Approach 0.5`)
+    console.log(`[scrape:helix] Approach 0 exhausted — trying Approach 0.1 (myshopify backend)`)
+
+    // --- Approach 0.1: helixsleep.myshopify.com — bypasses Cloudflare on the custom domain ---
+    // The *.myshopify.com backend serves /products/{handle}.json with no Cloudflare protection.
+    // Elite models are bundled under handle "helix-elite-mattress" with model name in option3
+    // and size in option1. The deduplication in extractResults collapses the 7-model × N-size
+    // matrix down to one price row per size.
+    {
+      const myshopifyHandleMap: Record<string, string[]> = {
+        'midnight-elite': ['helix-elite-mattress'],
+      }
+      const msHandles = myshopifyHandleMap[rawHandle] ?? [rawHandle]
+
+      for (const msHandle of msHandles) {
+        const msUrl = `https://helixsleep.myshopify.com/products/${msHandle}.json`
+        console.log(`[scrape:helix] Approach 0.1: ${msUrl}`)
+        try {
+          const msRes = await fetch(msUrl, {
+            headers: { ...BROWSER_HEADERS, Referer: 'https://helixsleep.myshopify.com/' },
+            signal: AbortSignal.timeout(15_000),
+          })
+          console.log(`[scrape:helix] Approach 0.1 status: ${msRes.status}`)
+          if (!msRes.ok) continue
+          const msText = await msRes.text()
+          if (!msText.startsWith('{')) continue
+          const msResults = parseHelixJson(JSON.parse(msText))
+          if (msResults.length >= 2) {
+            console.log(`[scrape:helix] ✓ Approach 0.1 (handle="${msHandle}"): ${msResults.length} sizes extracted`)
+            return msResults
+          }
+          console.log(`[scrape:helix] Approach 0.1 (handle="${msHandle}") yielded ${msResults.length} size(s)`)
+        } catch (err) {
+          console.log(`[scrape:helix] Approach 0.1 (handle="${msHandle}") failed:`, err instanceof Error ? err.message : err)
+        }
+      }
+    }
+    console.log(`[scrape:helix] Approach 0.1 exhausted — trying Approach 0.5`)
 
     // --- Approach 0.5: Shopify catalog endpoint (products.json) ---
     // Some handles 404 on the individual product.json endpoint but are still listed
@@ -732,7 +770,7 @@ async function readDisplayedPrices(page: Page): Promise<{ price: number | null; 
     }
 
     // --- Current/sale price: elements whose class/attrs look price-related ---
-    const priceEls = Array.from(document.querySelectorAll('[class*="price" i], [data-price], [itemprop="price"]'))
+    const priceEls = Array.from(document.querySelectorAll('[class*="price" i], [class*="money" i], [data-price], [data-product-price], [itemprop="price"]'))
       .filter(el => el.children.length <= 2 && isVisible(el))
     const candidates: number[] = []
     for (const el of priceEls) {
@@ -958,6 +996,26 @@ async function scrapeUniversal(url: string, variantFilter?: string | null, share
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20_000 })
     await page.waitForLoadState('networkidle', { timeout: 6_000 }).catch(() => {})
     await page.waitForTimeout(2000)
+
+    // Shopify headless stores (e.g. Birch) block /products/handle.json on their
+    // custom domain but the same endpoint works on their *.myshopify.com backend.
+    // Read window.Shopify.shop from the loaded page to discover that domain.
+    const shopifyShop = await page.evaluate(
+      () => (window as any).Shopify?.shop ?? null
+    ).catch(() => null)
+    if (shopifyShop) {
+      const handleMatch = url.match(/\/products\/([^/?#]+)/)
+      if (handleMatch) {
+        const myshopifyUrl = `https://${shopifyShop}/products/${handleMatch[1]}.json`
+        console.log(`[scrape:universal] Shopify shop detected: ${shopifyShop} — trying ${myshopifyUrl}`)
+        const jsonResult = await tryShopifyProductJson(myshopifyUrl)
+        if (jsonResult) {
+          console.log(`[scrape:universal] ✓ Resolved via myshopify JSON`)
+          return jsonResult  // finally block still runs, context/browser are closed
+        }
+        console.log(`[scrape:universal] myshopify JSON failed — falling through to DOM scraping`)
+      }
+    }
 
     await dismissModal(page)
 
