@@ -48,9 +48,14 @@ type PriceRow = {
 // newPrice = sale_price ?? regular_price, newCompareAt = regular_price if > newPrice.
 function toPriceRows(config: BrandConfig, variants: ScrapedVariant[], scrapedAt: string): PriceRow[] {
   const rows: PriceRow[] = []
+  // Belt-and-suspenders dedup: scrapeForBrand's own paths already dedupe by
+  // normalized size, but this is the last point before an insert reaches
+  // brand_prices, so guarantee no size is ever written twice per product here too.
+  const seenSizes = new Set<string>()
   for (const v of variants) {
     const size = normalizeSize(v.title)
-    if (!size) continue
+    if (!size || seenSizes.has(size)) continue
+    seenSizes.add(size)
     const hasSale = v.compare_at_price != null && v.compare_at_price > v.price
     rows.push({
       brand: config.brand,

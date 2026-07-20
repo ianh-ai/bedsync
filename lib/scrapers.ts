@@ -11,7 +11,9 @@ export function normalizeSize(title: string): string | null {
   const t = title.toLowerCase()
   if (t.includes('split')) return null  // Split King / Split CA King → not a standard size
   if (t.includes('cal king') || t.includes('cal. king') || t.includes('ca king') || t.includes('california king') || t.includes('calking')) return 'Cal King'
-  if (t.includes('twin xl') || t.includes('twin x') || t.includes('twinxl')) return 'Twin XL'
+  // "Twin Long" is TempurPedic's own label for Twin XL — without this, it falls
+  // through to the plain 'twin' match below and silently dedupes against Twin.
+  if (t.includes('twin xl') || t.includes('twin x') || t.includes('twinxl') || t.includes('twin long')) return 'Twin XL'
   if (t.includes('twin')) return 'Twin'
   if (t.includes('full')) return 'Full'
   if (t.includes('queen')) return 'Queen'
@@ -1084,7 +1086,14 @@ async function readDisplayedPrices(page: Page): Promise<{ price: number | null; 
       const style = window.getComputedStyle(el)
       if (style.display === 'none' || style.visibility === 'hidden' || parseFloat(style.opacity) === 0) return false
       const rect = el.getBoundingClientRect()
-      return rect.width > 0 && rect.height > 0
+      if (rect.width <= 0 || rect.height <= 0) return false
+      // A sticky/duplicate price bar can be technically "visible" (real geometry,
+      // no display:none) while scrolled entirely out of the viewport — e.g.
+      // TempurPedic's sticky-configurator price bar sits above the fold before
+      // the page scrolls to it, still shows the pre-click default price, and
+      // never updates on size selection. Require actual viewport intersection so
+      // that stale off-screen duplicates don't get counted as price candidates.
+      return rect.bottom > 0 && rect.top < window.innerHeight && rect.right > 0 && rect.left < window.innerWidth
     }
     // TempurPedic (and others) render a financing/monthly-payment label near a
     // strikethrough element — check up to 3 ancestor levels for financing-related
@@ -1133,6 +1142,7 @@ async function readDisplayedPrices(page: Page): Promise<{ price: number | null; 
     }
 
     // --- Current/sale price: elements whose class/attrs look price-related ---
+    const savingsRe = /\bsave\b|\byou\s*saved?\b|\bsavings\s*of\b/i
     const priceEls = Array.from(document.querySelectorAll('[class*="price" i], [class*="money" i], [data-price], [data-product-price], [itemprop="price"]'))
       .filter(el => el.children.length <= 2 && isVisible(el))
     const candidates: number[] = []
@@ -1141,6 +1151,11 @@ async function readDisplayedPrices(page: Page): Promise<{ price: number | null; 
       if (style.textDecorationLine.includes('line-through')) continue
       const text = el.textContent ?? ''
       if (financingRe.test(text)) continue
+      // "Save $X" / "You save $X" labels (e.g. TempurPedic's configurator panel)
+      // render inside a price-classed element but aren't a price at all — they're
+      // compareAt minus price, and including them made a shallower-looking
+      // "price" win the Math.min() below instead of the real sale price.
+      if (savingsRe.test(text)) continue
       const val = parsePrice(text)
       if (val != null) candidates.push(val)
     }
@@ -1149,10 +1164,13 @@ async function readDisplayedPrices(page: Page): Promise<{ price: number | null; 
     // Financing widgets ("$X/mo") often live in a class="...price..." element whose
     // OWN text doesn't contain "month" (it's in a sibling label instead), so they
     // slip past the financingRe check above and would otherwise win Math.min() by
-    // being far smaller than the real price. Mattress sales are rarely deeper than
-    // ~50% off, so drop candidates under half the largest one before taking the min.
+    // being far smaller than the real price. Financing labels are a small fraction
+    // of the full price (a few percent, for a monthly installment), while even a
+    // steep mattress clearance rarely goes past ~70% off — so a 25%-of-max floor
+    // still screens out financing noise without discarding legitimate deep sales
+    // (previously 50%, which was cutting off a genuine ~55%-off TempurPedic price).
     const maxCandidate = candidates.length > 0 ? Math.max(...candidates) : null
-    const plausible = maxCandidate != null ? candidates.filter(c => c >= maxCandidate * 0.5) : candidates
+    const plausible = maxCandidate != null ? candidates.filter(c => c >= maxCandidate * 0.25) : candidates
     const price = plausible.length > 0 ? Math.min(...plausible) : null
 
     // Pick the first compareAt candidate that's actually greater than price — a
@@ -1489,37 +1507,74 @@ async function scrapeUniversal(url: string, variantFilter?: string | null, share
       // selection, so reopen it fresh and re-find the matching option every time.
       for (const size of sizeSelector.sizes) {
         if (results.has(size)) continue
-        try {
-          const trigger = await findComboboxTrigger(page)
-          if (!trigger) {
-            console.log(`[scrape:universal] combobox: trigger not found on reopen for "${size}"`)
-            continue
-          }
-          await trigger.scrollIntoViewIfNeeded().catch(() => {})
-          await trigger.click({ timeout: 5000 }).catch(() => trigger.click({ timeout: 5000, force: true }))
-          await page.waitForTimeout(400)
+        let registered = false
+        // TempurPedic's Adapt page silently drops some reopen-and-click attempts
+        // (seen live: multiple sizes reading a frozen/stale price, and reopens
+        // occasionally failing to even find the trigger) — up to 3 attempts,
+        // checking the trigger's own displayed label (not the price panel)
+        // actually reflects the newly selected size before trusting the price
+        // read, with a settle pause before each retry.
+        for (let attempt = 0; attempt < 3 && !registered; attempt++) {
+          if (attempt > 0) await page.waitForTimeout(600)
+          try {
+            const trigger = await findComboboxTrigger(page)
+            if (!trigger) {
+              console.log(`[scrape:universal] combobox: trigger not found on reopen for "${size}" (attempt ${attempt + 1})`)
+              continue
+            }
+            await trigger.scrollIntoViewIfNeeded().catch(() => {})
+            await trigger.click({ timeout: 5000 }).catch(() => trigger.click({ timeout: 5000, force: true }))
+            await page.waitForTimeout(900)
 
-          const options = page.locator('[role="option"], [role="menuitem"], li, button, [role="radio"]')
-          const optionCount = await options.count()
-          let matched: Locator | null = null
-          for (let j = 0; j < optionCount; j++) {
-            const opt = options.nth(j)
-            const optText = ((await opt.textContent({ timeout: 1000 }).catch(() => null)) ?? '').trim()
-            if (normalizeSize(optText) === size) { matched = opt; break }
+            const options = page.locator('[role="option"], [role="menuitem"], li, button, [role="radio"]')
+            const optionCount = await options.count()
+            let matched: Locator | null = null
+            for (let j = 0; j < optionCount; j++) {
+              const opt = options.nth(j)
+              const optText = ((await opt.textContent({ timeout: 1000 }).catch(() => null)) ?? '').trim()
+              if (normalizeSize(optText) === size) { matched = opt; break }
+            }
+            if (!matched) {
+              console.log(`[scrape:universal] combobox: option for "${size}" not found on reopen (attempt ${attempt + 1})`)
+              await page.keyboard.press('Escape').catch(() => {})
+              continue
+            }
+            await matched.click({ timeout: 5000 }).catch(() => matched!.click({ timeout: 5000, force: true }))
+            await page.waitForTimeout(900)
+
+            const triggerAfter = await findComboboxTrigger(page)
+            const triggerText = (await triggerAfter?.textContent().catch(() => null)) ?? ''
+            if (normalizeSize(triggerText) === size) {
+              registered = true
+            } else {
+              console.log(`[scrape:universal] combobox: click for "${size}" didn't register (trigger shows "${triggerText.trim()}"), attempt ${attempt + 1}`)
+            }
+          } catch (err) {
+            console.log(`[scrape:universal] combobox click failed for "${size}" (attempt ${attempt + 1}):`, err instanceof Error ? err.message : err)
           }
-          if (!matched) {
-            console.log(`[scrape:universal] combobox: option for "${size}" not found on reopen`)
-            await page.keyboard.press('Escape').catch(() => {})
-            continue
-          }
-          await matched.click({ timeout: 5000 }).catch(() => matched!.click({ timeout: 5000, force: true }))
-        } catch (err) {
-          console.log(`[scrape:universal] combobox click failed for "${size}":`, err instanceof Error ? err.message : err)
+        }
+        if (!registered) {
+          // Never trust a price read for a selection we couldn't confirm — the
+          // page is still showing whatever size was selected before this one,
+          // and writing that under the wrong label is worse than omitting it.
+          console.log(`[scrape:universal] combobox: giving up on "${size}" after retries — skipping (would risk reading a stale price under the wrong label)`)
           continue
         }
         await page.waitForLoadState('networkidle', { timeout: 3_000 }).catch(() => {})
-        await page.waitForTimeout(700)
-        const { price, compareAt, candidates } = await readDisplayedPrices(page)
+        await page.waitForTimeout(900)
+        let read = await readDisplayedPrices(page)
+        // TempurPedic's post-click price panel can render an intermediate number
+        // before settling (seen live: Twin briefly showed a lower "Current Price"
+        // than the same-tier Full/Twin XL, which the immediate read caught mid-
+        // update) — re-read after a further short wait and prefer that value if
+        // it changed, rather than trusting a single snapshot right after the click.
+        await page.waitForTimeout(900)
+        const read2 = await readDisplayedPrices(page)
+        if (read2.price !== read.price) {
+          console.log(`[scrape:universal] price for "${size}" unstable: ${read.price ?? 'null'} -> ${read2.price ?? 'null'}, using settled value`)
+          read = read2
+        }
+        const { price, compareAt, candidates } = read
         console.log(`[scrape:universal] size="${size}" price=${price ?? 'null'} compareAt=${compareAt ?? 'null'} candidates=${JSON.stringify(candidates)}`)
         if (price != null) {
           results.set(size, { title: size, price, compare_at_price: compareAt != null && compareAt > price ? compareAt : null })
