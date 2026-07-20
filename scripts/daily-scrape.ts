@@ -67,18 +67,32 @@ function toPriceRows(config: BrandConfig, variants: ScrapedVariant[], scrapedAt:
 
 async function scrapeOne(config: BrandConfig): Promise<{ rows: PriceRow[] } | { error: string }> {
   const scrapedAt = new Date().toISOString()
+  // No shared browser passed — scrapeForBrand opens its own Bright Data session
+  // per call. Bright Data's Scraping Browser caps the number of distinct domains
+  // navigable within a single CDP connection, so one shared session can't be
+  // reused across ~14 different brand domains in this batch.
+  const attemptScrape = () => scrapeForBrand(
+    config.brand,
+    config.url,
+    config.variant_filter,
+    config.product_name,
+    config.api_product_name
+  )
+
   try {
-    // No shared browser passed — scrapeForBrand opens its own Bright Data session
-    // per call. Bright Data's Scraping Browser caps the number of distinct domains
-    // navigable within a single CDP connection, so one shared session can't be
-    // reused across ~14 different brand domains in this batch.
-    const variants = await scrapeForBrand(
-      config.brand,
-      config.url,
-      config.variant_filter,
-      config.product_name,
-      config.api_product_name
-    )
+    let variants
+    try {
+      variants = await attemptScrape()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      if (message.includes('Timeout') || message.includes('ERR_TIMED_OUT')) {
+        console.log(`[daily-scrape] retrying after timeout: ${config.url}`)
+        await new Promise(r => setTimeout(r, 5000))
+        variants = await attemptScrape()
+      } else {
+        throw err
+      }
+    }
 
     const rows = toPriceRows(config, variants, scrapedAt)
     if (rows.length === 0) return { error: 'No recognizable size variants found' }

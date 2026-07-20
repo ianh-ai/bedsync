@@ -19,7 +19,7 @@ export function normalizeSize(title: string): string | null {
   return null
 }
 
-const BROWSER_HEADERS = {
+export const BROWSER_HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
   'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
   'Accept-Language': 'en-US,en;q=0.9',
@@ -108,6 +108,163 @@ async function tryShopifyProductJson(url: string): Promise<ScrapedVariant[] | nu
     return results
   } catch (err) {
     console.log(`[scrape:shopify] Failed:`, err instanceof Error ? err.message : err)
+    return null
+  }
+}
+
+// Some brands in SHOPIFY_HOSTS (e.g. Puffy) turn out not to be classic Shopify
+// storefronts at all — Puffy is a headless Next.js frontend whose /products/x.json
+// 404s (Next.js's own error page, not a Shopify block). What it does expose is
+// schema.org ProductGroup structured data with a hasVariant[].offers.price per
+// size, right in the initial HTML — no browser needed.
+async function tryProductGroupJsonLd(url: string): Promise<ScrapedVariant[] | null> {
+  console.log(`[scrape:jsonld] Trying ${url}`)
+  try {
+    const res = await fetch(url, {
+      headers: { ...BROWSER_HEADERS, Accept: 'text/html' },
+      signal: AbortSignal.timeout(15_000),
+    })
+    console.log(`[scrape:jsonld] HTTP ${res.status}`)
+    if (!res.ok) return null
+    const html = await res.text()
+
+    const ldMatches = [...html.matchAll(/<script type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi)]
+    console.log(`[scrape:jsonld] ld+json blocks found: ${ldMatches.length}`)
+
+    for (const m of ldMatches) {
+      let parsed: Record<string, unknown>
+      try { parsed = JSON.parse(m[1]) } catch { continue }
+      if (parsed['@type'] !== 'ProductGroup') continue
+
+      const hasVariant = Array.isArray(parsed.hasVariant) ? parsed.hasVariant as Array<Record<string, unknown>> : []
+      const results: ScrapedVariant[] = []
+      const seenSizes = new Set<string>()
+      for (const v of hasVariant) {
+        const size = normalizeSize(String(v.size ?? ''))
+        if (!size || seenSizes.has(size)) continue
+
+        const offers = v.offers as Record<string, unknown> | undefined
+        const price = offers?.price != null ? parseFloat(String(offers.price)) : null
+        if (price == null || isNaN(price) || price <= 0) continue
+        seenSizes.add(size)
+
+        // schema.org Offer has no standard "was" price field distinct from price,
+        // so there's no MSRP to extract here — compare_at_price is null.
+        console.log(`[scrape:jsonld] size="${size}" price=${price}`)
+        results.push({ title: size, price, compare_at_price: null })
+      }
+
+      if (results.length >= 2) {
+        console.log(`[scrape:jsonld] ✓ ${results.length} size(s) via ProductGroup JSON-LD`)
+        return results
+      }
+    }
+    console.log(`[scrape:jsonld] No usable ProductGroup found`)
+    return null
+  } catch (err) {
+    console.log(`[scrape:jsonld] Failed:`, err instanceof Error ? err.message : err)
+    return null
+  }
+}
+
+// Naturepedic runs classic Magento — no bot protection, plain fetch works. Each
+// product page embeds a Magento_Swatches jsonConfig blob with a "mattress_size"
+// (or similarly-named) attribute whose options[] map size labels to product IDs,
+// and an optionPrices map keyed by those same product IDs with oldPrice/finalPrice.
+// The size <select>/swatch DOM itself is unreliable to scrape directly — on this
+// site there's also an unrelated "Foundation" add-on <select> whose options all
+// happen to contain the same size substring (e.g. 3 different leg-height options
+// all reading "...Cal King..."), which the generic DOM heuristic misidentifies as
+// the size selector since it only checks that options contain *a* size, not that
+// they're *distinct* sizes.
+async function tryMagentoConfig(url: string): Promise<ScrapedVariant[] | null> {
+  console.log(`[scrape:magento] Trying ${url}`)
+  try {
+    const res = await fetch(url, { headers: BROWSER_HEADERS, signal: AbortSignal.timeout(15_000) })
+    console.log(`[scrape:magento] HTTP ${res.status}`)
+    if (!res.ok) return null
+    const html = await res.text()
+
+    const keyIdx = html.indexOf('"jsonConfig"')
+    if (keyIdx === -1) {
+      console.log(`[scrape:magento] No jsonConfig found`)
+      return null
+    }
+    const openIdx = html.indexOf('{', keyIdx)
+    if (openIdx === -1) return null
+    let depth = 0, closeIdx = -1
+    for (let i = openIdx; i < Math.min(html.length, openIdx + 150_000); i++) {
+      if (html[i] === '{') depth++
+      else if (html[i] === '}') { depth--; if (depth === 0) { closeIdx = i; break } }
+    }
+    if (closeIdx === -1) {
+      console.log(`[scrape:magento] Could not find closing brace for jsonConfig`)
+      return null
+    }
+
+    let config: Record<string, unknown>
+    try {
+      config = JSON.parse(html.slice(openIdx, closeIdx + 1))
+    } catch (e) {
+      console.log(`[scrape:magento] jsonConfig parse failed:`, e instanceof Error ? e.message : e)
+      return null
+    }
+
+    const attributes = config.attributes as Record<string, Record<string, unknown>> | undefined
+    if (!attributes) {
+      console.log(`[scrape:magento] jsonConfig has no attributes`)
+      return null
+    }
+
+    let sizeAttr: Record<string, unknown> | null = null
+    for (const attr of Object.values(attributes)) {
+      const code = String(attr.code ?? '').toLowerCase()
+      if (code.includes('size')) { sizeAttr = attr; break }
+    }
+    if (!sizeAttr) {
+      console.log(`[scrape:magento] No size-like attribute found`)
+      return null
+    }
+
+    const options = Array.isArray(sizeAttr.options) ? sizeAttr.options as Array<Record<string, unknown>> : []
+    const optionPrices = config.optionPrices as Record<string, Record<string, unknown>> | undefined
+
+    const results: ScrapedVariant[] = []
+    const seenSizes = new Set<string>()
+    for (const opt of options) {
+      const size = normalizeSize(String(opt.label ?? ''))
+      if (!size || seenSizes.has(size)) continue
+      const productIds = Array.isArray(opt.products) ? opt.products as string[] : []
+      const pid = productIds[0]
+      if (!pid || !optionPrices?.[pid]) continue
+
+      const priceEntry = optionPrices[pid]
+      const finalPrice = (priceEntry.finalPrice as Record<string, unknown> | undefined)?.amount
+      const oldPrice = (priceEntry.oldPrice as Record<string, unknown> | undefined)?.amount
+        ?? (priceEntry.baseOldPrice as Record<string, unknown> | undefined)?.amount
+
+      const salePrice = typeof finalPrice === 'number' ? finalPrice : null
+      const regularPrice = typeof oldPrice === 'number' ? oldPrice : null
+      if (salePrice == null || salePrice <= 0) continue
+      seenSizes.add(size)
+
+      const hasRealSale = regularPrice != null && regularPrice > salePrice
+      console.log(`[scrape:magento] size="${size}" price=${salePrice} oldPrice=${regularPrice ?? 'null'}`)
+      results.push({
+        title: size,
+        price: salePrice,
+        compare_at_price: hasRealSale ? regularPrice : null,
+      })
+    }
+
+    if (results.length < 2) {
+      console.log(`[scrape:magento] Only ${results.length} size(s) — insufficient`)
+      return null
+    }
+    console.log(`[scrape:magento] ✓ ${results.length} size(s) via Magento swatch config`)
+    return results
+  } catch (err) {
+    console.log(`[scrape:magento] Failed:`, err instanceof Error ? err.message : err)
     return null
   }
 }
@@ -617,6 +774,94 @@ async function tryHelixWebUnlocker(pageUrl: string): Promise<ScrapedVariant[] | 
   }
 }
 
+// Birch shares Helix's exact backend (Laravel/Astrogoat, Livewire, DataDome-protected)
+// and embeds the identical _variantData JSON structure — confirmed via live diagnosis:
+// option_1_label, price_formatted, discounted_price, with the same nested metafields:{...}
+// sub-object between discounted_price and the closing brace. Modeled directly on
+// tryHelixWebUnlocker. Unlike Helix, Birch has no bundled support/model tiers
+// (option_2/option_3 are always null) — one variant per size, no tier filtering needed.
+async function tryBirchWebUnlocker(pageUrl: string): Promise<ScrapedVariant[] | null> {
+  if (!process.env.BRIGHT_DATA_API_KEY) return null
+  console.log(`[scrape:birch:unlocker] Fetching ${pageUrl}`)
+  try {
+    const res = await fetch('https://api.brightdata.com/request', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.BRIGHT_DATA_API_KEY}`,
+      },
+      body: JSON.stringify({ zone: 'bedsync2', url: pageUrl, format: 'raw' }),
+      signal: AbortSignal.timeout(90_000),
+    })
+    const html = await res.text()
+    console.log(`[scrape:birch:unlocker] HTTP ${res.status}, ${html.length} chars`)
+    if (!res.ok || html.length < 10_000) return null
+
+    // Walk the HTML finding every JSON object that contains "discounted_price".
+    // Uses brace-depth tracking instead of a flat regex because variant objects
+    // contain a nested metafields:{...} sub-object between the key and closing brace.
+    const variantObjects: string[] = []
+    let searchFrom = 0
+    while (true) {
+      const keyIdx = html.indexOf('"discounted_price"', searchFrom)
+      if (keyIdx === -1) break
+      let openIdx = -1
+      for (let i = keyIdx - 1; i >= Math.max(0, keyIdx - 2000); i--) {
+        if (html[i] === '{') { openIdx = i; break }
+      }
+      if (openIdx === -1) { searchFrom = keyIdx + 1; continue }
+      let depth = 0, closeIdx = -1
+      for (let i = openIdx; i < Math.min(html.length, openIdx + 5000); i++) {
+        if (html[i] === '{') depth++
+        else if (html[i] === '}') { depth--; if (depth === 0) { closeIdx = i; break } }
+      }
+      if (closeIdx === -1) { searchFrom = keyIdx + 1; continue }
+      variantObjects.push(html.slice(openIdx, closeIdx + 1))
+      searchFrom = closeIdx + 1
+    }
+    console.log(`[scrape:birch:unlocker] Variant blobs found: ${variantObjects.length}`)
+    if (variantObjects.length === 0) return null
+
+    const results: ScrapedVariant[] = []
+    const seenSizes = new Set<string>()
+
+    for (const raw of variantObjects) {
+      let obj: Record<string, unknown>
+      try { obj = JSON.parse(raw) } catch { continue }
+
+      const sizeLabel = String(obj.option_1_label ?? obj.option_1 ?? '')
+      const size = normalizeSize(sizeLabel)
+      if (!size || seenSizes.has(size)) continue
+      seenSizes.add(size)
+
+      const discountedCents = typeof obj.discounted_price === 'number' ? obj.discounted_price : null
+      const priceFormatted = String(obj.price_formatted ?? '').replace(/[^0-9.]/g, '')
+      const listPrice = priceFormatted ? parseFloat(priceFormatted) : null
+
+      if (!discountedCents || !listPrice) continue
+      const salePrice = Math.round(discountedCents) / 100
+
+      const hasRealSale = listPrice > salePrice
+      console.log(`[scrape:birch:unlocker] ${size}: list=$${listPrice} sale=$${salePrice} discount=${hasRealSale ? ((1 - salePrice/listPrice)*100).toFixed(1)+'%' : 'none'}`)
+      results.push({
+        title: size,
+        price: salePrice,
+        compare_at_price: hasRealSale ? listPrice : null,
+      })
+    }
+
+    if (results.length < 2) {
+      console.log(`[scrape:birch:unlocker] Only ${results.length} size(s) — insufficient`)
+      return null
+    }
+    console.log(`[scrape:birch:unlocker] ✓ ${results.length} sizes with live pricing`)
+    return results
+  } catch (err) {
+    console.log(`[scrape:birch:unlocker] Failed:`, err instanceof Error ? err.message : err)
+    return null
+  }
+}
+
 async function tryHelixJsonEndpoints(url: string): Promise<ScrapedVariant[] | null> {
   // --- Approach -1: Bright Data Web Unlocker (bypasses DataDome, returns embedded variant JSON) ---
   const unlockerResult = await tryHelixWebUnlocker(url)
@@ -817,7 +1062,7 @@ async function tryHelixJsonEndpoints(url: string): Promise<ScrapedVariant[] | nu
 
 const BRIGHT_DATA_WS = process.env.BRIGHT_DATA_WS
 
-async function connectBrightData(): Promise<Browser> {
+export async function connectBrightData(): Promise<Browser> {
   if (!BRIGHT_DATA_WS) throw new Error('BRIGHT_DATA_WS not set')
   return chromium.connectOverCDP(BRIGHT_DATA_WS)
 }
@@ -827,6 +1072,7 @@ const FINANCING_RE = /\/\s*mo\b|per\s*month|\bmonth(?:ly)?\b|afterpay|affirm|kla
 async function readDisplayedPrices(page: Page): Promise<{ price: number | null; compareAt: number | null; candidates: number[] }> {
   return page.evaluate((financingPattern: string) => {
     const financingRe = new RegExp(financingPattern, 'i')
+    const ancestorFinancingRe = /finance|affirm|klarna|afterpay|installment|monthly|per month/i
 
     function parsePrice(text: string): number | null {
       const m = text.match(/\$\s*([\d,]+(?:\.\d{2})?)/)
@@ -840,9 +1086,25 @@ async function readDisplayedPrices(page: Page): Promise<{ price: number | null; 
       const rect = el.getBoundingClientRect()
       return rect.width > 0 && rect.height > 0
     }
+    // TempurPedic (and others) render a financing/monthly-payment label near a
+    // strikethrough element — check up to 3 ancestor levels for financing-related
+    // class names or text before trusting a struck-through price as the real MSRP.
+    function hasFinancingAncestor(el: Element): boolean {
+      let node: Element | null = el
+      for (let depth = 0; depth < 3 && node; depth++) {
+        const cls = typeof node.className === 'string' ? node.className : ''
+        const text = node.textContent ?? ''
+        if (ancestorFinancingRe.test(cls) || ancestorFinancingRe.test(text)) return true
+        node = node.parentElement
+      }
+      return false
+    }
 
-    // --- Compare-at / MSRP: strikethrough markup or computed line-through style ---
-    let compareAt: number | null = null
+    // --- Compare-at / MSRP candidates: strikethrough markup or computed line-through style ---
+    // Collected rather than stopping at the first match, since the first struck-
+    // through element on the page isn't always the real MSRP (e.g. a financing
+    // "$200/mo" label) — the actual compareAt is chosen below once price is known.
+    const compareAtCandidates: number[] = []
     const strikeEls = Array.from(
       document.querySelectorAll(
         's, del, [class*="compare" i], [class*="was-price" i], [class*="strikethrough" i], [class*="original-price" i], [class*="msrp" i]'
@@ -852,10 +1114,11 @@ async function readDisplayedPrices(page: Page): Promise<{ price: number | null; 
       if (!isVisible(el)) continue
       const text = el.textContent ?? ''
       if (financingRe.test(text)) continue
+      if (hasFinancingAncestor(el)) continue
       const val = parsePrice(text)
-      if (val != null) { compareAt = val; break }
+      if (val != null) compareAtCandidates.push(val)
     }
-    if (compareAt == null) {
+    {
       const leafEls = Array.from(document.querySelectorAll('body *')).filter(el => el.children.length === 0)
       for (const el of leafEls) {
         if (!isVisible(el)) continue
@@ -863,8 +1126,9 @@ async function readDisplayedPrices(page: Page): Promise<{ price: number | null; 
         if (!style.textDecorationLine.includes('line-through')) continue
         const text = el.textContent ?? ''
         if (financingRe.test(text)) continue
+        if (hasFinancingAncestor(el)) continue
         const val = parsePrice(text)
-        if (val != null) { compareAt = val; break }
+        if (val != null) compareAtCandidates.push(val)
       }
     }
 
@@ -890,6 +1154,14 @@ async function readDisplayedPrices(page: Page): Promise<{ price: number | null; 
     const maxCandidate = candidates.length > 0 ? Math.max(...candidates) : null
     const plausible = maxCandidate != null ? candidates.filter(c => c >= maxCandidate * 0.5) : candidates
     const price = plausible.length > 0 ? Math.min(...plausible) : null
+
+    // Pick the first compareAt candidate that's actually greater than price — a
+    // "compareAt" less than or equal to price (e.g. TempurPedic's ~$200 financing
+    // label) can't be a real MSRP, so it's discarded rather than trusted.
+    const compareAt = price != null
+      ? compareAtCandidates.find(c => c > price) ?? null
+      : (compareAtCandidates[0] ?? null)
+
     return { price, compareAt, candidates }
   }, FINANCING_RE.source)
 }
@@ -1092,7 +1364,7 @@ async function scrapeUniversal(url: string, variantFilter?: string | null, share
     // networkidle is unreliable on real sites — chat widgets, analytics beacons,
     // and personalization polling mean the network often never truly goes idle,
     // so a strict wait for it here would time out even on a healthy page load.
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20_000 })
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 40_000 })
     await page.waitForLoadState('networkidle', { timeout: 6_000 }).catch(() => {})
     await page.waitForTimeout(2000)
 
@@ -1105,8 +1377,11 @@ async function scrapeUniversal(url: string, variantFilter?: string | null, share
     if (shopifyShop) {
       const handleMatch = url.match(/\/products\/([^/?#]+)/)
       if (handleMatch) {
-        const myshopifyUrl = `https://${shopifyShop}/products/${handleMatch[1]}.json`
-        console.log(`[scrape:universal] Shopify shop detected: ${shopifyShop} — trying ${myshopifyUrl}`)
+        // tryShopifyProductJson appends its own .json suffix, so this must stay
+        // a bare product URL — passing one that already ends in .json produced
+        // a double .json.json 404 (found live during Brooklyn Bedding testing).
+        const myshopifyUrl = `https://${shopifyShop}/products/${handleMatch[1]}`
+        console.log(`[scrape:universal] Shopify shop detected: ${shopifyShop} — trying ${myshopifyUrl}.json`)
         const jsonResult = await tryShopifyProductJson(myshopifyUrl)
         if (jsonResult) {
           console.log(`[scrape:universal] ✓ Resolved via myshopify JSON`)
@@ -1276,15 +1551,37 @@ export async function scrapeForBrand(brand: string, url: string, variantFilter?:
     if (jsonResult) return jsonResult
     throw new Error('Helix JSON endpoints exhausted — no product.json/products.json match found, and browser scraping is blocked by DataDome')
   }
+  if (normalizedBrand === 'birch') {
+    // Birch's product.json 404s as a genuine "no route" app error (not a Shopify
+    // block) — it isn't a classic Shopify JSON store, so skip straight to the
+    // embedded _variantData blob it shares with Helix's backend.
+    const unlockerResult = await tryBirchWebUnlocker(url)
+    if (unlockerResult) return unlockerResult
+    console.log(`[scrape:birch] Web Unlocker failed or unavailable — falling through to browser scraping`)
+    return scrapeUniversal(url, variantFilter, browser)
+  }
+  if (normalizedBrand === 'naturepedic') {
+    // Naturepedic runs Magento with no bot protection — a plain fetch of the
+    // embedded swatch jsonConfig is far more reliable than DOM scraping, where an
+    // unrelated Foundation add-on <select> gets misidentified as the size selector.
+    const magentoResult = await tryMagentoConfig(url)
+    if (magentoResult) return magentoResult
+    console.log(`[scrape:naturepedic] Magento config failed — falling through to browser scraping`)
+    return scrapeUniversal(url, variantFilter, browser)
+  }
 
   const SHOPIFY_HOSTS = new Set([
-    'casper.com', 'birchliving.com', 'winkbeds.com', 'puffy.com', 'bearmattress.com',
+    'casper.com', 'winkbeds.com', 'puffy.com', 'bearmattress.com', 'mlilyusa.com',
   ])
   const host = new URL(url).hostname.replace(/^www\./, '')
   if (SHOPIFY_HOSTS.has(host)) {
     const shopifyResult = await tryShopifyProductJson(url)
     if (shopifyResult) return shopifyResult
-    console.log(`[scrape:shopify] JSON failed — falling through to browser scraping`)
+    console.log(`[scrape:shopify] JSON failed — trying schema.org JSON-LD`)
+
+    const jsonLdResult = await tryProductGroupJsonLd(url)
+    if (jsonLdResult) return jsonLdResult
+    console.log(`[scrape:shopify] JSON-LD failed — falling through to browser scraping`)
   }
 
   return scrapeUniversal(url, variantFilter, browser)

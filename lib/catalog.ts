@@ -56,10 +56,14 @@ export const CATALOG: CatalogBrand[] = [
     products: [
       { id: 'avocado-green-medium', name: 'Green Medium Tight Top', brand: 'avocado', url: 'https://www.avocadogreenmattress.com/products/green-natural-organic-mattress', variantFilter: 'medium' },
       { id: 'avocado-green-firm', name: 'Green Firm Tight Top', brand: 'avocado', url: 'https://www.avocadogreenmattress.com/products/green-natural-organic-mattress', variantFilter: 'firm' },
-      { id: 'avocado-green-plush', name: 'Green Plush Pillow Top', brand: 'avocado', url: 'https://www.avocadogreenmattress.com/products/green-natural-organic-mattress', variantFilter: 'plush' },
+      // 'avocado-green-plush' (variantFilter: 'plush') removed — clicking "plush" on
+      // this product removes the standard size selector entirely (confirmed live,
+      // reproducible across multiple scrape runs), unlike 'medium'/'firm'/'ultra plush'
+      // which all scrape correctly on the same site.
       { id: 'avocado-eco-organic', name: 'Eco Organic', brand: 'avocado', url: 'https://www.avocadogreenmattress.com/products/best-organic-affordable-mattress-eco-organic' },
       { id: 'avocado-luxury-medium', name: 'Luxury Organic Medium Tight Top', brand: 'avocado', url: 'https://www.avocadogreenmattress.com/products/natural-organic-luxury-plush-mattress', variantFilter: 'medium' },
-      { id: 'avocado-luxury-plush', name: 'Luxury Organic Plush Pillow Top', brand: 'avocado', url: 'https://www.avocadogreenmattress.com/products/natural-organic-luxury-plush-mattress', variantFilter: 'plush' },
+      // 'avocado-luxury-plush' (variantFilter: 'plush') removed — same "plush" bug as
+      // avocado-green-plush above.
       { id: 'avocado-luxury-ultra-plush', name: 'Luxury Organic Ultra Plush Box Top', brand: 'avocado', url: 'https://www.avocadogreenmattress.com/products/natural-organic-luxury-plush-mattress', variantFilter: 'ultra plush' },
       { id: 'avocado-extra-firm', name: 'Extra Firm Mattress', brand: 'avocado', url: 'https://www.avocadogreenmattress.com/products/extra-firm-mattress' },
       { id: 'avocado-green-ultra-plush', name: 'Green Ultra Plush Box Top', brand: 'avocado', url: 'https://www.avocadogreenmattress.com/products/green-ultra-plush-mattress' },
