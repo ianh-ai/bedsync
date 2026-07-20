@@ -1372,6 +1372,75 @@ async function dismissModal(page: Page): Promise<void> {
   }
 }
 
+// TempurPedic's size selector is a popup panel driven by the same combobox
+// trigger findComboboxTrigger() finds elsewhere, but repeatedly reopening it
+// within one page load hits a confirmed TempurPedic-side bug: some reopen+
+// click sequences silently fail to register, and the panel keeps showing the
+// previous size's price. Reloading the page fresh for each size sidesteps the
+// panel's state machine entirely — slower (one navigation per size) but
+// reliable, since each attempt starts from the same known-good initial state.
+const TEMPURPEDIC_SIZES: Array<{ label: string; norm: string }> = [
+  { label: 'Twin', norm: 'Twin' },
+  { label: 'Twin Long', norm: 'Twin XL' },
+  { label: 'Full', norm: 'Full' },
+  { label: 'Queen', norm: 'Queen' },
+  { label: 'King', norm: 'King' },
+  { label: 'CA King', norm: 'Cal King' },
+]
+
+async function scrapeTempurpedicReloadPerSize(url: string, browser: Browser): Promise<ScrapedVariant[]> {
+  const results = new Map<string, ScrapedVariant>()
+
+  for (const { label, norm } of TEMPURPEDIC_SIZES) {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 900 } })
+    const page = await context.newPage()
+    try {
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 40_000 })
+      await page.waitForTimeout(3000)
+
+      const trigger = await findComboboxTrigger(page)
+      if (!trigger) {
+        console.log(`[scrape:tempurpedic] size-panel trigger not found for "${label}"`)
+        continue
+      }
+      await trigger.scrollIntoViewIfNeeded().catch(() => {})
+      await trigger.click({ timeout: 5000 }).catch(() => trigger.click({ timeout: 5000, force: true }))
+      await page.waitForTimeout(600)
+
+      // Exact match, not normalizeSize()'s substring match — "Twin" and "Twin
+      // Long" would otherwise collide, and this panel's option list is small
+      // enough that scanning it fresh every load is cheap.
+      const options = page.locator('[role="option"], [role="menuitem"], li, button, [role="radio"]')
+      const optionCount = await options.count()
+      let matched: Locator | null = null
+      for (let j = 0; j < optionCount; j++) {
+        const opt = options.nth(j)
+        const optText = ((await opt.textContent({ timeout: 1000 }).catch(() => null)) ?? '').trim()
+        if (optText === label) { matched = opt; break }
+      }
+      if (!matched) {
+        console.log(`[scrape:tempurpedic] size option "${label}" not found in panel`)
+        continue
+      }
+      await matched.click({ timeout: 5000 }).catch(() => matched!.click({ timeout: 5000, force: true }))
+      await page.waitForLoadState('networkidle', { timeout: 3_000 }).catch(() => {})
+      await page.waitForTimeout(1200)
+
+      const { price, compareAt, candidates } = await readDisplayedPrices(page)
+      console.log(`[scrape:tempurpedic] size="${norm}" price=${price ?? 'null'} compareAt=${compareAt ?? 'null'} candidates=${JSON.stringify(candidates)}`)
+      if (price != null) {
+        results.set(norm, { title: norm, price, compare_at_price: compareAt != null && compareAt > price ? compareAt : null })
+      }
+    } catch (err) {
+      console.log(`[scrape:tempurpedic] error scraping "${label}":`, err instanceof Error ? err.message : err)
+    } finally {
+      await context.close()
+    }
+  }
+
+  return [...results.values()]
+}
+
 async function scrapeUniversal(url: string, variantFilter?: string | null, sharedBrowser?: Browser): Promise<ScrapedVariant[]> {
   const browser = sharedBrowser ?? (await connectBrightData())
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } })
@@ -1623,6 +1692,19 @@ export async function scrapeForBrand(brand: string, url: string, variantFilter?:
     if (magentoResult) return magentoResult
     console.log(`[scrape:naturepedic] Magento config failed — falling through to browser scraping`)
     return scrapeUniversal(url, variantFilter, browser)
+  }
+  if (normalizedBrand === 'tempurpedic') {
+    // TempurPedic's size-panel widget has a confirmed, deterministic bug: after
+    // enough reopen+click cycles within one page load, some size selections
+    // silently fail to register and the panel keeps showing a stale price under
+    // the newly-requested size's label. Reloading fresh for each size sidesteps
+    // the panel's state machine — slower, but each attempt starts clean.
+    const b = browser ?? (await connectBrightData())
+    try {
+      return await scrapeTempurpedicReloadPerSize(url, b)
+    } finally {
+      if (!browser) await b.close()
+    }
   }
 
   const SHOPIFY_HOSTS = new Set([
