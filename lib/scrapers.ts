@@ -1178,8 +1178,8 @@ export async function connectBrightData(): Promise<Browser> {
 
 const FINANCING_RE = /\/\s*mo\b|per\s*month|\bmonth(?:ly)?\b|afterpay|affirm|klarna|financing|as low as/i
 
-async function readDisplayedPrices(page: Page): Promise<{ price: number | null; compareAt: number | null; candidates: number[] }> {
-  return page.evaluate((financingPattern: string) => {
+async function readDisplayedPrices(page: Page, plausibilityFloor: number = 0.50): Promise<{ price: number | null; compareAt: number | null; candidates: number[] }> {
+  return page.evaluate(({ financingPattern, plausibilityFloor }: { financingPattern: string; plausibilityFloor: number }) => {
     const financingRe = new RegExp(financingPattern, 'i')
     const ancestorFinancingRe = /finance|affirm|klarna|afterpay|installment|monthly|per month/i
 
@@ -1271,13 +1271,14 @@ async function readDisplayedPrices(page: Page): Promise<{ price: number | null; 
     // Financing widgets ("$X/mo") often live in a class="...price..." element whose
     // OWN text doesn't contain "month" (it's in a sibling label instead), so they
     // slip past the financingRe check above and would otherwise win Math.min() by
-    // being far smaller than the real price. Financing labels are a small fraction
-    // of the full price (a few percent, for a monthly installment), while even a
-    // steep mattress clearance rarely goes past ~70% off — so a 25%-of-max floor
-    // still screens out financing noise without discarding legitimate deep sales
-    // (previously 50%, which was cutting off a genuine ~55%-off TempurPedic price).
+    // being far smaller than the real price. plausibilityFloor screens out that
+    // noise — but how deep a floor is safe is brand-specific: most DOM-scraped
+    // sites (Leesa, etc.) show a small recurring financing-artifact value that
+    // needs the stricter 50% default, while TempurPedic's own configurator can
+    // legitimately run ~55% off, which the caller can lower the floor to admit
+    // (see plausibilityFloor param and scrapeTempurpedicReloadPerSize's call).
     const maxCandidate = candidates.length > 0 ? Math.max(...candidates) : null
-    const plausible = maxCandidate != null ? candidates.filter(c => c >= maxCandidate * 0.25) : candidates
+    const plausible = maxCandidate != null ? candidates.filter(c => c >= maxCandidate * plausibilityFloor) : candidates
     const price = plausible.length > 0 ? Math.min(...plausible) : null
 
     // Pick the first compareAt candidate that's actually greater than price — a
@@ -1288,7 +1289,7 @@ async function readDisplayedPrices(page: Page): Promise<{ price: number | null; 
       : (compareAtCandidates[0] ?? null)
 
     return { price, compareAt, candidates }
-  }, FINANCING_RE.source)
+  }, { financingPattern: FINANCING_RE.source, plausibilityFloor })
 }
 
 type SizeSelector =
@@ -1533,7 +1534,10 @@ async function scrapeTempurpedicReloadPerSize(url: string, browser: Browser): Pr
       await page.waitForLoadState('networkidle', { timeout: 3_000 }).catch(() => {})
       await page.waitForTimeout(1200)
 
-      const { price, compareAt, candidates } = await readDisplayedPrices(page)
+      // TempurPedic's own configurator can legitimately run ~55% off (confirmed
+      // live on Cloud's Sitebuster sale) — the default 50% floor would wrongly
+      // discard that, so this brand alone gets a deeper 25% floor.
+      const { price, compareAt, candidates } = await readDisplayedPrices(page, 0.25)
       console.log(`[scrape:tempurpedic] size="${norm}" price=${price ?? 'null'} compareAt=${compareAt ?? 'null'} candidates=${JSON.stringify(candidates)}`)
       if (price != null) {
         results.set(norm, { title: norm, price, compare_at_price: compareAt != null && compareAt > price ? compareAt : null })
