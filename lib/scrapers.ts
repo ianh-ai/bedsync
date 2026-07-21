@@ -864,6 +864,113 @@ async function tryBirchWebUnlocker(pageUrl: string): Promise<ScrapedVariant[] | 
   }
 }
 
+// Brooklyn Bedding is classic Shopify (tryShopifyProductJson already reaches its
+// .json endpoint fine), but that endpoint only ever returns the base price — any
+// active storewide sale is applied client-side and isn't reflected in
+// compare_at_price at all. Confirmed live: the rendered page's <product-price>
+// component shows a real "Regular price"/"Sale price" pair (a flat percentage
+// off) for whichever variant the page's own ?variant= query param selected, and
+// a separate compact embedded array — {"id":...,"price":...,"name":...,
+// "public_title":"Twin / Medium / No",...} — lists base (pre-discount) prices
+// for every variant. This fetches that once via Web Unlocker, derives the
+// live discount ratio from the rendered price pair, and applies it to the base
+// price of each size — using the same first-match-per-size selection
+// tryShopifyProductJson already uses (no real firmness filtering there either),
+// so results stay consistent with the existing catalog entries. If variantFilter
+// is supplied, it narrows to variants whose non-size option matches it first.
+async function tryBrooklynBeddingWebUnlocker(pageUrl: string, variantFilter?: string | null): Promise<ScrapedVariant[] | null> {
+  if (!process.env.BRIGHT_DATA_API_KEY) return null
+  console.log(`[scrape:brooklynbedding:unlocker] Fetching ${pageUrl}`)
+  try {
+    const res = await fetch('https://api.brightdata.com/request', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.BRIGHT_DATA_API_KEY}`,
+      },
+      body: JSON.stringify({ zone: 'bedsync2', url: pageUrl, format: 'raw' }),
+      signal: AbortSignal.timeout(60_000),
+    })
+    const html = await res.text()
+    console.log(`[scrape:brooklynbedding:unlocker] HTTP ${res.status}, ${html.length} chars`)
+    if (!res.ok || html.length < 10_000) return null
+
+    // Compact per-variant entries: {"id":NUM,"price":CENTS,"name":"...","public_title":"Size / Firmness / ...","sku":"..."}
+    const variantRe = /\{"id":(\d+),"price":(\d+),"name":"[^"]*","public_title":"([^"]*)","sku":"[^"]*"\}/g
+    const rawVariants: Array<{ id: string; priceCents: number; title: string }> = []
+    let m: RegExpExecArray | null
+    while ((m = variantRe.exec(html)) !== null) {
+      rawVariants.push({ id: m[1], priceCents: parseInt(m[2], 10), title: m[3] })
+    }
+    console.log(`[scrape:brooklynbedding:unlocker] Compact variant entries found: ${rawVariants.length}`)
+    if (rawVariants.length === 0) return null
+
+    // Live discount ratio: the rendered price component's "Regular price" (struck
+    // through) vs "Sale price" for the currently-selected variant. No sale
+    // active → these labels/prices won't both be present, and we return null so
+    // the caller falls through to tryShopifyProductJson (which handles the
+    // no-sale case correctly on its own).
+    const regularMatch = html.match(/Regular price[^$]*\$([0-9,]+\.\d{2})/)
+    const saleMatch = html.match(/Sale price[^$]*\$([0-9,]+\.\d{2})/)
+    if (!regularMatch || !saleMatch) {
+      console.log(`[scrape:brooklynbedding:unlocker] No live Regular/Sale price pair found — no active discount, falling through`)
+      return null
+    }
+    const regular = parseFloat(regularMatch[1].replace(/,/g, ''))
+    const sale = parseFloat(saleMatch[1].replace(/,/g, ''))
+    if (!(regular > 0) || !(sale > 0) || sale >= regular) {
+      console.log(`[scrape:brooklynbedding:unlocker] Regular/sale prices not a real discount (regular=$${regular}, sale=$${sale}) — falling through`)
+      return null
+    }
+    const discountRatio = sale / regular
+    console.log(`[scrape:brooklynbedding:unlocker] Live discount: ${((1 - discountRatio) * 100).toFixed(1)}% off (regular=$${regular}, sale=$${sale})`)
+
+    const segments = (title: string) => title.split('/').map(s => s.trim())
+
+    let candidates = rawVariants
+    if (variantFilter) {
+      const vf = variantFilter.toLowerCase()
+      const filtered = rawVariants.filter(v =>
+        segments(v.title).some(s => normalizeSize(s) == null && s.toLowerCase() === vf)
+      )
+      if (filtered.length > 0) {
+        candidates = filtered
+      } else {
+        console.log(`[scrape:brooklynbedding:unlocker] variant_filter="${variantFilter}" matched nothing — using unfiltered variant list`)
+      }
+    }
+
+    const results: ScrapedVariant[] = []
+    const seenSizes = new Set<string>()
+    for (const v of candidates) {
+      const sizeSeg = segments(v.title).find(s => normalizeSize(s) != null)
+      const size = sizeSeg ? normalizeSize(sizeSeg) : null
+      if (!size || seenSizes.has(size)) continue
+      seenSizes.add(size)
+
+      const basePrice = v.priceCents / 100
+      const salePrice = Math.round(basePrice * discountRatio * 100) / 100
+      const hasRealSale = basePrice > salePrice
+      console.log(`[scrape:brooklynbedding:unlocker] ${size}: base=$${basePrice} sale=$${salePrice}`)
+      results.push({
+        title: size,
+        price: salePrice,
+        compare_at_price: hasRealSale ? basePrice : null,
+      })
+    }
+
+    if (results.length < 2) {
+      console.log(`[scrape:brooklynbedding:unlocker] Only ${results.length} size(s) — insufficient`)
+      return null
+    }
+    console.log(`[scrape:brooklynbedding:unlocker] ✓ ${results.length} sizes with live discounted pricing`)
+    return results
+  } catch (err) {
+    console.log(`[scrape:brooklynbedding:unlocker] Failed:`, err instanceof Error ? err.message : err)
+    return null
+  }
+}
+
 async function tryHelixJsonEndpoints(url: string): Promise<ScrapedVariant[] | null> {
   // --- Approach -1: Bright Data Web Unlocker (bypasses DataDome, returns embedded variant JSON) ---
   const unlockerResult = await tryHelixWebUnlocker(url)
@@ -1705,6 +1812,16 @@ export async function scrapeForBrand(brand: string, url: string, variantFilter?:
     } finally {
       if (!browser) await b.close()
     }
+  }
+  if (normalizedBrand === 'brooklynbedding') {
+    // Brooklyn Bedding's Shopify product.json (reached via scrapeUniversal's
+    // myshopify-shop-detection path below) only ever has the base price — an
+    // active storewide sale is applied client-side and never lands in
+    // compare_at_price. Try the live discounted price via Web Unlocker first.
+    const unlockerResult = await tryBrooklynBeddingWebUnlocker(url, variantFilter)
+    if (unlockerResult) return unlockerResult
+    console.log(`[scrape:brooklynbedding] Web Unlocker failed or no live discount — falling through to browser scraping`)
+    return scrapeUniversal(url, variantFilter, browser)
   }
 
   const SHOPIFY_HOSTS = new Set([
