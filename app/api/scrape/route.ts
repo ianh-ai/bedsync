@@ -185,12 +185,14 @@ export async function runScrape(tracked_product_id: string, supabase: SupabaseCl
   }
 }
 
-export async function POST(request: Request) {
-  const body = await request.json()
-  const { tracked_product_id } = body
-  if (!tracked_product_id) {
-    return Response.json({ error: 'tracked_product_id required' }, { status: 400 })
-  }
-  const supabase = await createClient()
-  return runScrape(tracked_product_id, supabase)
+// Playwright can't run on Vercel serverless (crashes with "Cannot find module
+// browsers.json") — scraping happens separately via GitHub Actions
+// (scripts/daily-scrape.ts), which writes to brand_prices directly. The HTTP
+// handler is disabled so Vercel never tries to invoke it; runScrape stays
+// exported above so daily-scrape.ts can still import it.
+export async function POST() {
+  return Response.json(
+    { error: 'Manual scraping is not available — prices are updated automatically each morning.' },
+    { status: 503 }
+  )
 }

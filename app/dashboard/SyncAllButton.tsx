@@ -17,13 +17,6 @@ export default function SyncAllButton({ productIds }: { productIds: string[] }) 
     for (let i = 0; i < productIds.length; i++) {
       const id = productIds[i]
       try {
-        const scrapeRes = await fetch('/api/scrape', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ tracked_product_id: id }),
-        })
-        if (!scrapeRes.ok) { failed++; setProgress(i + 1); continue }
-
         const syncRes = await fetch('/api/sync', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

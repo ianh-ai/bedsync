@@ -236,16 +236,6 @@ export default function ProductsClient({
   async function handleSync(id: string) {
     setSyncStates(s => ({ ...s, [id]: 'checking' }))
     try {
-      const scrapeRes = await fetch('/api/scrape', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tracked_product_id: id }),
-      })
-      if (!scrapeRes.ok) {
-        setSyncStates(s => ({ ...s, [id]: 'error' }))
-        setTimeout(() => setSyncStates(s => ({ ...s, [id]: 'idle' })), 3000)
-        return
-      }
       const syncRes = await fetch('/api/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

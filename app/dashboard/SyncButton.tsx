@@ -3,19 +3,11 @@
 import { useState } from 'react'
 
 export default function SyncButton({ productId }: { productId: string }) {
-  const [status, setStatus] = useState<'idle' | 'scraping' | 'syncing' | 'done' | 'error'>('idle')
+  const [status, setStatus] = useState<'idle' | 'syncing' | 'done' | 'error'>('idle')
 
   async function handleSync() {
-    setStatus('scraping')
+    setStatus('syncing')
     try {
-      const scrapeRes = await fetch('/api/scrape', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tracked_product_id: productId }),
-      })
-      if (!scrapeRes.ok) throw new Error('Price check failed')
-
-      setStatus('syncing')
       const syncRes = await fetch('/api/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -31,7 +23,7 @@ export default function SyncButton({ productId }: { productId: string }) {
     }
   }
 
-  const isLoading = status === 'scraping' || status === 'syncing'
+  const isLoading = status === 'syncing'
 
   return (
     <button
@@ -45,8 +37,7 @@ export default function SyncButton({ productId }: { productId: string }) {
           : 'bg-blue-50 hover:bg-blue-100 text-blue-700 disabled:opacity-60'
       }`}
     >
-      {status === 'scraping' ? 'Checking…' :
-       status === 'syncing' ? 'Syncing…' :
+      {status === 'syncing' ? 'Syncing…' :
        status === 'done' ? 'Synced!' :
        status === 'error' ? 'Failed' :
        'Sync Now'}
