@@ -1,6 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getPlanLimit } from '@/lib/plans'
-import { runScrape } from '../../scrape/route'
 import { runSync } from '../../sync/route'
 
 export const runtime = 'nodejs'
@@ -40,7 +39,7 @@ export async function GET(request: Request) {
   type ProductResult = {
     name: string
     status: 'ok' | 'error'
-    step?: 'scrape' | 'sync'
+    step?: 'sync'
     error?: string
     detail?: string
   }
@@ -109,18 +108,6 @@ export async function GET(request: Request) {
       }
 
       try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const scrapeRes = await runScrape(product.id, admin as any)
-        if (!scrapeRes.ok) {
-          const body = await scrapeRes.json().catch(() => ({})) as Record<string, string>
-          const msg = body.error ?? `scrape HTTP ${scrapeRes.status}`
-          const detail = body.detail ?? body.brand ?? undefined
-          console.error(`[cron:sync-all] ${store.shop_domain} / "${name}" scrape failed: ${msg}${detail ? ` (${detail})` : ''}`)
-          productResults.push({ name, status: 'error', step: 'scrape', error: msg, detail })
-          failed++
-          continue
-        }
-
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const syncRes = await runSync(product.id, admin as any, {
           shop_domain: store.shop_domain,
