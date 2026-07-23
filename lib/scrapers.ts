@@ -897,10 +897,21 @@ async function tryBirchWebUnlocker(pageUrl: string): Promise<ScrapedVariant[] | 
 // redirects birch-living.myshopify.com's default domain to checkout.birchliving.com
 // (x-redirect-reason: primary_domain_redirection), but /products/<handle>.json
 // on the myshopify subdomain still resolves directly with real variant data.
+// The custom-domain product handle doesn't always match the myshopify
+// backend's handle — confirmed live for these two (same class of quirk as
+// Helix's "helix-" prefix / "midnight-elite" -> "helix-elite-mattress"
+// remapping). Everything else uses the path handle as-is.
+const BIRCH_MYSHOPIFY_HANDLE_MAP: Record<string, string> = {
+  'birch-natural-organic-mattress': 'birch-organic-mattress',
+  'birch-luxe-natural-mattress': 'birch-luxe-mattress',
+}
+
 async function tryBirchMyshopifyFallback(pageUrl: string): Promise<ScrapedVariant[] | null> {
   const handleMatch = pageUrl.match(/\/products\/([^/?#]+)/)
   if (!handleMatch) return null
-  const myshopifyUrl = `https://birch-living.myshopify.com/products/${handleMatch[1]}`
+  const pathHandle = handleMatch[1]
+  const myshopifyHandle = BIRCH_MYSHOPIFY_HANDLE_MAP[pathHandle] ?? pathHandle
+  const myshopifyUrl = `https://birch-living.myshopify.com/products/${myshopifyHandle}`
   console.log(`[scrape:birch] myshopify fallback: ${myshopifyUrl}.json`)
   return tryShopifyProductJson(myshopifyUrl)
 }
