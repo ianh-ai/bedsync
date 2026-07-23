@@ -36,7 +36,7 @@ export default async function DashboardPage({
   const { data: products } = store
     ? await supabase
         .from('tracked_products')
-        .select('id, label, shopify_product_title, scrape_status, scrape_attempted_at')
+        .select('id, label, shopify_product_title, scrape_status, scrape_attempted_at, last_synced_at')
         .eq('store_id', store.id)
         .is('deleted_at', null)
     : { data: [] }
@@ -52,13 +52,13 @@ export default async function DashboardPage({
     (p: { scrape_status: string | null }) => p.scrape_status === 'error'
   ).length
   const updatedToday = allProducts.filter(
-    (p: { scrape_status: string | null; scrape_attempted_at: string | null }) =>
-      p.scrape_status === 'ok' && p.scrape_attempted_at && p.scrape_attempted_at >= todayIso
+    (p: { scrape_status: string | null; last_synced_at: string | null }) =>
+      p.scrape_status === 'ok' && p.last_synced_at && p.last_synced_at >= todayIso
   ).length
   const lastSyncAt = allProducts.reduce<string | null>(
-    (latest, p: { scrape_attempted_at: string | null }) => {
-      if (!p.scrape_attempted_at) return latest
-      return !latest || p.scrape_attempted_at > latest ? p.scrape_attempted_at : latest
+    (latest, p: { last_synced_at: string | null }) => {
+      if (!p.last_synced_at) return latest
+      return !latest || p.last_synced_at > latest ? p.last_synced_at : latest
     },
     null
   )
