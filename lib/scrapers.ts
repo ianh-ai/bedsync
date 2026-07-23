@@ -35,7 +35,7 @@ export const BROWSER_HEADERS = {
 // before the browser-based scraper avoids the DOM-heuristic failure modes
 // (invisible sticky bars, popovers, slow-loading pages) that hit Casper,
 // Birch, WinkBeds, Puffy, and Bear — modeled on tryHelixJsonEndpoints.
-async function tryShopifyProductJson(url: string): Promise<ScrapedVariant[] | null> {
+async function tryShopifyProductJson(url: string, variantFilter?: string | null): Promise<ScrapedVariant[] | null> {
   const urlObj = new URL(url)
   const handleMatch = url.match(/\/products\/([^/?#]+)/)
   if (!handleMatch) return null
@@ -78,9 +78,29 @@ async function tryShopifyProductJson(url: string): Promise<ScrapedVariant[] | nu
     }
     console.log(`[scrape:shopify] Size key: ${sizeKey}`)
 
+    // Some products bundle a second dimension (e.g. Avocado's "Feel": Firm/
+    // Medium/Plush) in another option column — without filtering to the
+    // requested one, dedup-by-size below would silently keep whichever
+    // firmness happens to appear first per size in the raw array, mislabeling
+    // it as the catalog entry's own variant_filter (e.g. "medium" getting the
+    // "firm" price). Mirrors the same filter-then-dedup pattern used for
+    // Brooklyn Bedding's variant_filter handling.
+    let candidates = variants
+    if (variantFilter) {
+      const vf = variantFilter.toLowerCase()
+      const otherKeys = optionKeys.filter(k => k !== sizeKey)
+      const filtered = variants.filter(v => otherKeys.some(k => String(v[k] ?? '').toLowerCase().includes(vf)))
+      if (filtered.length > 0) {
+        candidates = filtered
+        console.log(`[scrape:shopify] variant_filter="${variantFilter}" matched ${filtered.length} variant(s)`)
+      } else {
+        console.log(`[scrape:shopify] variant_filter="${variantFilter}" matched nothing — using unfiltered variant list`)
+      }
+    }
+
     const results: ScrapedVariant[] = []
     const seenSizes = new Set<string>()
-    for (const v of variants) {
+    for (const v of candidates) {
       const size = normalizeSize(String(v[sizeKey] ?? ''))
       if (!size || seenSizes.has(size)) continue
       seenSizes.add(size)
@@ -1601,7 +1621,7 @@ async function scrapeUniversal(url: string, variantFilter?: string | null, share
         // a double .json.json 404 (found live during Brooklyn Bedding testing).
         const myshopifyUrl = `https://${shopifyShop}/products/${handleMatch[1]}`
         console.log(`[scrape:universal] Shopify shop detected: ${shopifyShop} — trying ${myshopifyUrl}.json`)
-        const jsonResult = await tryShopifyProductJson(myshopifyUrl)
+        const jsonResult = await tryShopifyProductJson(myshopifyUrl, variantFilter)
         if (jsonResult) {
           console.log(`[scrape:universal] ✓ Resolved via myshopify JSON`)
           return jsonResult  // finally block still runs, context/browser are closed
@@ -1853,11 +1873,11 @@ export async function scrapeForBrand(brand: string, url: string, variantFilter?:
   }
 
   const SHOPIFY_HOSTS = new Set([
-    'casper.com', 'winkbeds.com', 'puffy.com', 'bearmattress.com', 'mlilyusa.com',
+    'casper.com', 'winkbeds.com', 'puffy.com', 'bearmattress.com', 'mlilyusa.com', 'avocadogreenmattress.com',
   ])
   const host = new URL(url).hostname.replace(/^www\./, '')
   if (SHOPIFY_HOSTS.has(host)) {
-    const shopifyResult = await tryShopifyProductJson(url)
+    const shopifyResult = await tryShopifyProductJson(url, variantFilter)
     if (shopifyResult) return shopifyResult
     console.log(`[scrape:shopify] JSON failed — trying schema.org JSON-LD`)
 
