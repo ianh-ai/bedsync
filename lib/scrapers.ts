@@ -864,6 +864,27 @@ async function tryBirchWebUnlocker(pageUrl: string): Promise<ScrapedVariant[] | 
   }
 }
 
+// Birch's own domain either 404s /products/<handle>.json (a genuine "no route"
+// app error, not real product data) or only renders prices client-side, but
+// Birch runs on Shopify — the *.myshopify.com backend serves the same catalog
+// with neither issue. Same fallback pattern as Helix's myshopify approach
+// (helixsleep.myshopify.com): extract the handle from the path and fetch it
+// directly, reusing the generic Shopify JSON parser since Birch has no bundled
+// support/model tiers to filter (one variant per size).
+//
+// The store's actual myshopify handle is "birch-living" (hyphenated) — plain
+// "birchliving.myshopify.com" 404s at the root, confirmed live; Shopify itself
+// redirects birch-living.myshopify.com's default domain to checkout.birchliving.com
+// (x-redirect-reason: primary_domain_redirection), but /products/<handle>.json
+// on the myshopify subdomain still resolves directly with real variant data.
+async function tryBirchMyshopifyFallback(pageUrl: string): Promise<ScrapedVariant[] | null> {
+  const handleMatch = pageUrl.match(/\/products\/([^/?#]+)/)
+  if (!handleMatch) return null
+  const myshopifyUrl = `https://birch-living.myshopify.com/products/${handleMatch[1]}`
+  console.log(`[scrape:birch] myshopify fallback: ${myshopifyUrl}.json`)
+  return tryShopifyProductJson(myshopifyUrl)
+}
+
 // Brooklyn Bedding is classic Shopify (tryShopifyProductJson already reaches its
 // .json endpoint fine), but that endpoint only ever returns the base price — any
 // active storewide sale is applied client-side and isn't reflected in
@@ -1792,7 +1813,10 @@ export async function scrapeForBrand(brand: string, url: string, variantFilter?:
     // embedded _variantData blob it shares with Helix's backend.
     const unlockerResult = await tryBirchWebUnlocker(url)
     if (unlockerResult) return unlockerResult
-    console.log(`[scrape:birch] Web Unlocker failed or unavailable — falling through to browser scraping`)
+    console.log(`[scrape:birch] Web Unlocker failed or unavailable — trying myshopify JSON fallback`)
+    const myshopifyResult = await tryBirchMyshopifyFallback(url)
+    if (myshopifyResult) return myshopifyResult
+    console.log(`[scrape:birch] myshopify JSON fallback failed — falling through to browser scraping`)
     return scrapeUniversal(url, variantFilter, browser)
   }
   if (normalizedBrand === 'naturepedic') {
